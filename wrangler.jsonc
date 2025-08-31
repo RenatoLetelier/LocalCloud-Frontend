@@ -1,5 +1,5 @@
 {
   "name": "worker-name",
   "compability_date": "2025-08-31",
-  "main": "./index.js"
+  "main": "./index.html"
 }
