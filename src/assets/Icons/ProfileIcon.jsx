@@ -1,7 +1,7 @@
 export default function ProfileIcon({ size = 28, color = "currentColor" }) {
   return (
     <svg
-      class="person-crop-circle"
+      className="person-crop-circle"
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 64 64"
       width={size}

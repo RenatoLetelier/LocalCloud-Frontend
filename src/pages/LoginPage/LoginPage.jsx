@@ -29,15 +29,58 @@ export default function LoginPage() {
       );
 
       if (!res.ok) {
-        throw new Error("Incorrect email or password");
+        let msg = "Incorrect email or password";
+        try {
+          const maybeJson = await res.clone().json();
+          msg = maybeJson?.message || msg;
+        } catch {
+          throw new Error(msg);
+        }
       }
 
-      const data = await res.json();
+      const ct = res.headers.get("content-type") || "";
+      let data = {};
+      if (ct.includes("application/json")) {
+        try {
+          data = await res.json();
+        } catch {
+          data = {};
+        }
+      }
 
-      localStorage.setItem("token", data.token);
+      const token =
+        data?.token ??
+        data?.access_token ??
+        data?.body?.token ??
+        data?.data?.token ??
+        null;
+
+      console.log("Login response data:", data);
+
+      if (!token) {
+        console.error("Login OK pero sin token en la respuesta:", data);
+        throw new Error("No se recibió token desde el servidor.");
+      }
+
+      try {
+        localStorage.setItem("token", token);
+        console.log("Token guardado en localStorage");
+      } catch (storageErr) {
+        console.warn(
+          "localStorage bloqueado, usando memoria de sesión:",
+          storageErr
+        );
+        try {
+          sessionStorage.setItem("token", token);
+        } catch {
+          console.error("sessionStorage también bloqueado:", storageErr);
+          // como último recurso, mantén en estado global o contexto
+        }
+      }
 
       navigate("/");
     } catch (err) {
+      console.error("Error en login:", err);
       setError(err.message || "Error al iniciar sesión");
     } finally {
       setLoading(false);
