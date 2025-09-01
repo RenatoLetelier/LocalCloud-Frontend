@@ -3,7 +3,7 @@
   min-width: 320px;
   margin: 0 auto;
 
-  /* border: 1px solid purple; */
+  border: 0px solid purple;
 }
 
 @media (min-width: 480px) {
@@ -30,13 +30,3 @@
     border: 0px solid red;
   }
 }
-
-
-/* 
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-  border: 1px solid blue;
-} */

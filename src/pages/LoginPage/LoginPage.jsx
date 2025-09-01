@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ThemeButtonComponent from "../../components/ThemeButtonComponent/ThemeButton.component";
 import EyeOffIcon from "../../assets/Icons/EyeOffIcon";
 import EyeIcon from "../../assets/Icons/EyeIcon";
 import "./LoginPage.css";
@@ -55,8 +56,6 @@ export default function LoginPage() {
         data?.data?.token ??
         null;
 
-      console.log("Login response data:", data);
-
       if (!token) {
         console.error("Login OK pero sin token en la respuesta:", data);
         throw new Error("No se recibió token desde el servidor.");
@@ -64,7 +63,6 @@ export default function LoginPage() {
 
       try {
         localStorage.setItem("token", token);
-        console.log("Token guardado en localStorage");
       } catch (storageErr) {
         console.warn(
           "localStorage bloqueado, usando memoria de sesión:",
@@ -74,7 +72,6 @@ export default function LoginPage() {
           sessionStorage.setItem("token", token);
         } catch {
           console.error("sessionStorage también bloqueado:", storageErr);
-          // como último recurso, mantén en estado global o contexto
         }
       }
 
@@ -89,7 +86,12 @@ export default function LoginPage() {
 
   return (
     <div className="container">
-      <h1 className="title">Local Cloud</h1>
+      <div className="toggle-button">
+        <ThemeButtonComponent />
+      </div>
+      <div>
+        <h1 className="title">Local Cloud</h1>
+      </div>
       <form onSubmit={handleSubmit} className="form">
         <input
           type="email"

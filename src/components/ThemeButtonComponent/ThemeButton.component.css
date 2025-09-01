@@ -1,0 +1,8 @@
+.theme-toggle {
+  background: none;
+  border: none;
+  padding: .5rem;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}

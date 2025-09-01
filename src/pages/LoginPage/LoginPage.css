@@ -26,9 +26,9 @@
 .input {
   padding: 0.75rem;
   border-radius: 8px;
-  border: 1px solid #8d8d8d;
+  border: 1px solid var(--border-color);
   font-size: 1rem;
-  color: rgba(255, 255, 255, 0.63);
+  color: var(--color);
   display: flex;
   align-items: center;
 }
@@ -37,15 +37,21 @@
   padding: 0.75rem;
   border: none;
   border-radius: 8px;
-  background: #007BFF;
-  color: #fff;
+  background: var(--primary-color);
+  color: var(--color);
   font-size: 1rem;
   cursor: pointer;
   transition: backgroud 0.3s;
 }
 
+.toggle-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
 .error {
-  color: red;
+  color: var(--error-color);
   margin-bottom: 1rem;
 }
 
@@ -62,11 +68,12 @@
 
 .toggle-password {
   position: absolute;
-  right: 10px;
-  margin: 5px;
+  right: 5px;
   background: none;
   border: none;
   cursor: pointer;
   font-size: 1.1rem;
   display: flex;
+  padding: .5rem;
+  color: inherit;
 }
