@@ -40,7 +40,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (error) {
-      const timer = setTimeout(() => setError(null), 3000);
+      const timer = setTimeout(() => setError(null), 5000);
       return () => clearTimeout(timer);
     }
   }, [error]);
