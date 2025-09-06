@@ -1,55 +1,49 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useAuth } from "../../context/Contexts.jsx";
 import ThemeButtonComponent from "../../components/ThemeButtonComponent/ThemeButton.component";
 import EyeOffIcon from "../../assets/Icons/EyeOffIcon";
 import EyeIcon from "../../assets/Icons/EyeIcon";
 import "./LoginPage.css";
 
 export default function LoginPage() {
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const navigate = useNavigate();
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
+    if (!email || !password) {
+      setError("Please enter both email and password.");
+      setLoading(false);
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(
-        "https://local-cloud-backend.vercel.app/api/auth/login",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
-
-      const data = (await res.json()) || {};
-
-      if (!res.ok) {
-        throw new Error(data.message);
-      }
-
-      const token = data.token ?? null;
-
-      try {
-        localStorage.setItem("token", token);
-      } catch (err) {
-        console.error("Error setting token. ", err);
-      }
-
-      navigate("/");
+      await login({ email, password });
     } catch (err) {
       setError(err.message || "Error logging in. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   return (
     <div className="container">
