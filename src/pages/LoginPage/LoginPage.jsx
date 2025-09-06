@@ -18,9 +18,6 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const apiUrl = import.meta.env.VITE_API_URL;
-    console.log("API URL:", apiUrl);
-
     if (!email || !password) {
       setError("Please enter both email and password.");
       setLoading(false);
