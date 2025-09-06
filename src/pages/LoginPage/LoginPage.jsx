@@ -29,56 +29,23 @@ export default function LoginPage() {
         }
       );
 
+      const data = (await res.json()) || {};
+
       if (!res.ok) {
-        let msg = "Incorrect email or password";
-        try {
-          const maybeJson = await res.clone().json();
-          msg = maybeJson?.message || msg;
-        } catch {
-          throw new Error(msg);
-        }
+        throw new Error(data.message);
       }
 
-      const ct = res.headers.get("content-type") || "";
-      let data = {};
-      if (ct.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = {};
-        }
-      }
-
-      const token =
-        data?.token ??
-        data?.access_token ??
-        data?.body?.token ??
-        data?.data?.token ??
-        null;
-
-      if (!token) {
-        console.error("Login OK pero sin token en la respuesta:", data);
-        throw new Error("No se recibió token desde el servidor.");
-      }
+      const token = data.token ?? null;
 
       try {
         localStorage.setItem("token", token);
-      } catch (storageErr) {
-        console.warn(
-          "localStorage bloqueado, usando memoria de sesión:",
-          storageErr
-        );
-        try {
-          sessionStorage.setItem("token", token);
-        } catch {
-          console.error("sessionStorage también bloqueado:", storageErr);
-        }
+      } catch (err) {
+        console.error("Error setting token. ", err);
       }
 
       navigate("/");
     } catch (err) {
-      console.error("Error en login:", err);
-      setError(err.message || "Error al iniciar sesión");
+      setError(err.message || "Error logging in. Please try again.");
     } finally {
       setLoading(false);
     }
