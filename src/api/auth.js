@@ -1,10 +1,10 @@
 import axios from "axios";
 
-const SUBURL = "/api/auth";
+const baseURL = `${import.meta.env.VITE_API_URL}/api/auth`;
 
 export const loginRequest = (user) =>
   axios({
-    url: `${SUBURL}/login`,
+    url: `${baseURL}/login`,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     data: user,
