@@ -4,16 +4,20 @@ import process from "node:process";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+
   return {
     plugins: [react()],
     server: {
       proxy: {
         "/api": {
-          target: env.VITE_API_URL,
+          target: mode === "development" ? env.VITE_API_URL : undefined,
           changeOrigin: true,
           secure: false,
         },
       },
+    },
+    define: {
+      "import.meta.env.VITE_API_URL": JSON.stringify(env.VITE_API_URL),
     },
   };
 });

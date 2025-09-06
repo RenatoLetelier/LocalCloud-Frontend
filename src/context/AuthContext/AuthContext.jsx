@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await loginRequest(userReq);
 
-      if (!res.ok || !res.data.token) {
+      if (!res.data.token) {
         throw new Error("Invalid credentials");
       }
       if (!res.data.user?.id || !res.data.user?.email) {
