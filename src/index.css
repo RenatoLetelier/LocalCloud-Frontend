@@ -54,28 +54,12 @@ html, body { height: 100%; }
     --s: 0%;   /* 0–100% */
     --l: 97%;  /* 0–100% */
 
-    --h-primary: 211;   /* 0–360 */
-    --s-primary: 100%;  /* 0–100% */
-    --l-primary: 40%;   /* 0–100% */
-
-    --bg: hsl(var(--h) var(--s) var(--l));
-    --surface-1: hsl(var(--h) var(--s) 14%);
-    --surface-2: hsl(var(--h) var(--s) 18%);
-    --surface-3: hsl(var(--h) var(--s) 22%);
-    --surface-4: hsl(var(--h) var(--s) 26%);
-
     --text-1:     hsl(0 0% 13%);
     --text-2:     hsl(0 0% 28%);
     --text-muted: hsl(0 0% 45%);
 
     --border:     hsl(var(--h) var(--s) calc(var(--l) - 40%));
     --outline:    hsl(var(--h) var(--s) calc(var(--l) - 60%));
-
-    --primary:    hsl(var(--h-primary) var(--s-primary) var(--l-primary));
-    --on-primary: hsl(var(--h-primary) var(--s-primary) calc(var(--l-primary) - 8%));
-
-    --secondary:    hsl(var(--h-secondary) var(--s-secondary) var(--l-secondary));
-    --on-secondary: hsl(var(--h-secondary) var(--s-secondary) calc(var(--l-secondary) - 8%));
   }
 }
 
@@ -86,45 +70,20 @@ html[data-theme="light"] {
   --s: 0%;   /* 0–100% */
   --l: 97%;  /* 0–100% */
 
-  --h-primary: 211;   /* 0–360  */
-  --s-primary: 100%;  /* 0–100% */
-  --l-primary: 40%;   /* 0–100% */
-
-  --bg: hsl(var(--h) var(--s) var(--l));
-  --surface-1: hsl(var(--h) var(--s) 14%);
-  --surface-2: hsl(var(--h) var(--s) 18%);
-  --surface-3: hsl(var(--h) var(--s) 22%);
-  --surface-4: hsl(var(--h) var(--s) 26%);
-
   --text-1:     hsl(0 0% 13%);
   --text-2:     hsl(0 0% 28%);
   --text-muted: hsl(0 0% 45%);
 
   --border:     hsl(var(--h) var(--s) calc(var(--l) - 40%));
   --outline:    hsl(var(--h) var(--s) calc(var(--l) - 60%));
-
-  --primary:    hsl(var(--h-primary) var(--s-primary) var(--l-primary));
-  --on-primary: hsl(var(--h-primary) var(--s-primary) calc(var(--l-primary) - 8%));
-
-  --secondary:    hsl(var(--h-secondary) var(--s-secondary) var(--l-secondary));
-  --on-secondary: hsl(var(--h-secondary) var(--s-secondary) calc(var(--l-secondary) - 8%));
 }
+
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  --h: 240; /* 0–360  */
+  --h: 240; /* 0–360 */
   --s: 3%;  /* 0–100% */
   --l: 11%; /* 0–100% */
-
-  --h-primary: 211;   /* 0–360  */
-  --s-primary: 100%;  /* 0–100% */
-  --l-primary: 40%;   /* 0–100% */
-
-  --bg: hsl(var(--h) var(--s) var(--l));
-  --surface-1: hsl(var(--h) var(--s) 14%);
-  --surface-2: hsl(var(--h) var(--s) 18%);
-  --surface-3: hsl(var(--h) var(--s) 22%);
-  --surface-4: hsl(var(--h) var(--s) 26%);
 
   --text-1:      hsl(0 0% 94%);
   --text-2:      hsl(0 0% 80%);
@@ -132,12 +91,6 @@ html[data-theme="dark"] {
 
   --border:     hsl(var(--h) var(--s) calc(var(--l) + 40%));
   --outline:    hsl(var(--h) var(--s) calc(var(--l) + 60%));
-
-  --primary:    hsl(var(--h-primary) var(--s-primary) var(--l-primary));
-  --on-primary: hsl(var(--h-primary) var(--s-primary) calc(var(--l-primary) - 8%));
-
-  --secondary:    hsl(var(--h-secondary) var(--s-secondary) var(--l-secondary));
-  --on-secondary: hsl(var(--h-secondary) var(--s-secondary) calc(var(--l-secondary) - 8%));
 }
 
 :root { font-family: var(--font-system); line-height: 1.5; font-weight: 400; }
@@ -145,8 +98,6 @@ html[data-theme="dark"] {
 body {
   min-height: 100vh;
   display: flex;
-  background: var(--bg);
-  color: var(--text-1);
 }
 
 .alert { padding: .75rem 1rem; border-radius: calc(var(--radius) - 4px); }
