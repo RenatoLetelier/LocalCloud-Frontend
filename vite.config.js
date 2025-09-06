@@ -10,14 +10,14 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         "/api": {
-          target: mode === "development" ? env.VITE_API_URL : undefined,
+          target:
+            mode === "development"
+              ? env.VITE_API_URL
+              : import.meta.env.VITE_API_URL,
           changeOrigin: true,
           secure: false,
         },
       },
-    },
-    define: {
-      "import.meta.env.VITE_API_URL": JSON.stringify(env.VITE_API_URL),
     },
   };
 });
