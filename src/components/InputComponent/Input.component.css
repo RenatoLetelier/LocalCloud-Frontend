@@ -1,0 +1,32 @@
+.input {
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-size: 1rem;
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper .input {
+  flex: 1;
+  padding-right: 40px;
+}
+
+.toggle-show-password {
+  position: absolute;
+  right: 5px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  padding: .5rem;
+  color: inherit;
+}
