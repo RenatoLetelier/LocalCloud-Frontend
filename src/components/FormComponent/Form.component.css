@@ -1,0 +1,28 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 1rem;
+}
+
+.error-message {
+  color: var(--error);
+  font-weight: bold;
+}
+
+.submit-button {
+  padding: 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--text-1);
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: backgroud 0.3s;
+}
+
+.submit-button:hover {
+  background: var(--on-primary);
+  color: var(--text-1);
+}

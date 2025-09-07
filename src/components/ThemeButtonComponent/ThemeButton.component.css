@@ -1,4 +1,11 @@
-.theme-toggle {
+.toggle-theme-button-container {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  border-radius: 10px;
+}
+
+.button-theme-toggle {
   background: none;
   border: none;
   padding: .5rem;

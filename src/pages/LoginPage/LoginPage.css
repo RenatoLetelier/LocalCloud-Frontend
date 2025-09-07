@@ -1,4 +1,4 @@
-.container {
+.login-page-container {
   display: flex;
   position: relative;
   flex-direction: column;
@@ -10,77 +10,4 @@
   padding: 0 1.5rem;
   margin: 0 auto;
   color: var(--text-1);
-}
-
-.title {
-  font-weight: bold;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  gap: 1rem;
-}
-
-.input {
-  padding: 0.75rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  font-size: 1rem;
-  color: var(--text-1);
-  display: flex;
-  align-items: center;
-}
-
-.button {
-  padding: 0.75rem;
-  border: none;
-  border-radius: 8px;
-  background: var(--primary);
-  color: var(--text-1);
-  font-size: 1rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: backgroud 0.3s;
-}
-
-.button:hover {
-  background: var(--on-primary);
-  color: var(--text-1);
-}
-
-.toggle-button {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  border-radius: 10px;
-}
-
-.error {
-  color: var(--error);
-  font-weight: bold;
-}
-
-.password-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.password-wrapper .input {
-  flex: 1;
-  padding-right: 40px;
-}
-
-.toggle-password {
-  position: absolute;
-  right: 5px;
-  background: none;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  padding: .5rem;
-  color: inherit;
 }
