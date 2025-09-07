@@ -1,4 +1,4 @@
-import { useState, useReducer, useEffect } from "react";
+import { useState, useReducer, useEffect, useRef } from "react";
 import { useAuth } from "../../context/Contexts.jsx";
 import ThemeButtonComponent from "../../components/ThemeButtonComponent/ThemeButton.component";
 import EyeOffIcon from "../../assets/Icons/EyeOffIcon";
@@ -6,48 +6,44 @@ import EyeIcon from "../../assets/Icons/EyeIcon";
 import "./LoginPage.css";
 
 const initialState = {
-  email: "",
-  password: "",
-  user: null,
   loading: false,
   error: null,
 };
 
-const loginReducer = (state, action) => {
+function loginReducer(state, action) {
   switch (action.type) {
-    case "UPDATE_FIELD":
-      return { ...state, [action.field]: action.value, error: null };
     case "LOGIN_START":
-      return { ...state, loading: true, error: null };
+      return { loading: true, error: null };
     case "LOGIN_SUCCESS":
-      return { ...state, loading: false, user: action.payload };
+      return { loading: false, error: null };
     case "LOGIN_ERROR":
-      return { ...state, loading: false, error: action.payload };
+      return { loading: false, error: action.payload };
     case "LOGOUT":
       return { ...initialState };
+
     default:
       return state;
   }
-};
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [state, dispatch] = useReducer(loginReducer, initialState);
 
+  const emailInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const email = emailInputRef.current?.value;
+    const password = passwordInputRef.current?.value;
+
     dispatch({ type: "LOGIN_START" });
 
     try {
-      const result = await login({
-        email: state.email,
-        password: state.password,
-      });
-
-      const user = result?.user ?? { email: state.email };
-
-      dispatch({ type: "LOGIN_SUCCESS", payload: user });
+      login({ email, password });
+      dispatch({ type: "LOGIN_SUCCESS" });
     } catch (err) {
       dispatch({
         type: "LOGIN_ERROR",
@@ -79,17 +75,10 @@ export default function LoginPage() {
           type="email"
           name="email"
           placeholder="Email"
-          value={state.email}
-          onChange={(e) =>
-            dispatch({
-              type: "UPDATE_FIELD",
-              field: "email",
-              value: e.target.value,
-            })
-          }
           className="input"
           required
           autoComplete="username"
+          ref={emailInputRef}
         />
 
         <div className="password-wrapper">
@@ -97,17 +86,10 @@ export default function LoginPage() {
             type={showPassword ? "text" : "password"}
             name="password"
             placeholder="Password"
-            value={state.password}
-            onChange={(e) =>
-              dispatch({
-                type: "UPDATE_FIELD",
-                field: "password",
-                value: e.target.value,
-              })
-            }
             className="input"
             required
             autoComplete="current-password"
+            ref={passwordInputRef}
           />
           <button
             type="button"

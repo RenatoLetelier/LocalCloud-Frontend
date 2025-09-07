@@ -42,7 +42,15 @@ export default function ThemeButtonComponent() {
   const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
   return (
-    <button className="theme-toggle" onClick={toggle}>
+    <button
+      className="theme-toggle"
+      onClick={toggle}
+      aria-label={toggle}
+      aria-labelledby="theme-button"
+      id="theme-button"
+      role="button"
+      title="Toggle light/dark theme"
+    >
       {theme === "dark" ? <SunIcon /> : <MoonIcon />}
     </button>
   );
