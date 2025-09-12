@@ -35,7 +35,7 @@ export default function ThemeButtonComponent() {
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
-      // Do nothing
+      console.log("Error saving 'data-theme' in localstorage");
     }
   }, [theme]);
 

@@ -5,7 +5,9 @@ import "./LoginPage.css";
 export default function LoginPage() {
   return (
     <div className="login-page-container">
-      <ThemeButtonComponent />
+      <div className="theme-button-container">
+        <ThemeButtonComponent />
+      </div>
 
       <h1>Local Cloud</h1>
 

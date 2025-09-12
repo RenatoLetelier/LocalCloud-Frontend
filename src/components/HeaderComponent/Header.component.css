@@ -6,6 +6,30 @@
 
   font-size: 14px;
   
-  background-color: #323236;
-  /* border: 1px solid red; */
+  background-color: var(--surface-1);
+}
+
+.title {
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--text-1);
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.settings-section {
+  display: flex;
+  align-items: center;
+}
+
+.profile-section {
+  display: flex;
+  align-items: center;
+  padding: .3rem;
+  margin: .3rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.profile-section:hover {
+  background-color: var(--on-hover);
 }

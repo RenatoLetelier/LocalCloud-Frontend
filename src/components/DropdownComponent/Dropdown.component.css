@@ -1,0 +1,10 @@
+.dropdown-container {
+  display: flex;
+  justify-content: center;
+  padding: .3rem;
+  margin-top: .3rem;
+  margin-right: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--black);
+  background-color: var(--surface-2);
+}
