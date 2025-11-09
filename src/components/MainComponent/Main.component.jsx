@@ -1,9 +1,15 @@
+import Gallery from "../GalleryComponent/Gallery.component";
+import Card from "../CardComponent/Card.component";
 import "./Main.component.css";
 
 export default function Main() {
   return (
     <main className="main-container">
-      <h1>Main</h1>
+      <Gallery>
+        <Card cardName={"Movies Project"} redirectPath="/movies" />
+        <Card cardName={"Photos Project"} redirectPath="/photos" />
+        <Card cardName={"Passwords Project"} redirectPath="/passwords" />
+      </Gallery>
     </main>
   );
 }

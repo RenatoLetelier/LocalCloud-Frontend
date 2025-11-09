@@ -1,9 +1,8 @@
-import { useRef, useEffect, useState, useLayoutEffect } from "react";
+import { useRef, useEffect, useLayoutEffect } from "react";
 import "./Dropdown.component.css";
 
 export default function Dropdown({ isOpen, anchorRef, onClose, children }) {
   const dropdownRef = useRef(null);
-  const [style, setStyle] = useState({});
 
   // Cerrar por click fuera
   useEffect(() => {
@@ -23,20 +22,25 @@ export default function Dropdown({ isOpen, anchorRef, onClose, children }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [isOpen, anchorRef, onClose]);
 
-  // Medición y posicionamiento
+  // Medición y posicionamiento -> escribe variables CSS
   useLayoutEffect(() => {
     if (!isOpen) return;
     const anchor = anchorRef?.current;
-    if (!anchor) return;
+    const dropdown = dropdownRef.current;
+    if (!anchor || !dropdown) return;
+
+    const setVars = (vars) => {
+      for (const [k, v] of Object.entries(vars)) {
+        dropdown.style.setProperty(k, v);
+      }
+    };
 
     const updatePosition = () => {
       const rect = anchor.getBoundingClientRect();
-      setStyle({
-        position: "fixed",
-        top: rect.bottom,
-        left: rect.left,
-        minWidth: rect.width,
-        zIndex: 1000,
+      setVars({
+        "--top": `${rect.bottom}px`,
+        "--right": `${window.innerWidth - rect.right}px`,
+        "--minWidth": `${rect.width}px`,
       });
     };
 
@@ -63,7 +67,7 @@ export default function Dropdown({ isOpen, anchorRef, onClose, children }) {
   if (!isOpen) return null;
 
   return (
-    <div className="dropdown-container" ref={dropdownRef} style={style}>
+    <div className="dropdown-container" ref={dropdownRef}>
       {children}
     </div>
   );

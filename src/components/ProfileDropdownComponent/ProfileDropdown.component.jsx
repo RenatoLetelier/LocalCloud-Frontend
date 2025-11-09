@@ -1,14 +1,22 @@
+import "./ProfileDropdown.component.css";
+
 export default function ProfileDropdownContent() {
   const handleLogout = () => {
     localStorage.removeItem("token");
   };
 
   return (
-    <div>
+    <div className="profile-dropdown-container">
       <ul>
-        <li onClick={handleLogout}>
-          <a href="/login">Log out</a>
-        </li>
+        <a href="/profile">
+          <li>Profile</li>
+        </a>
+        <a href="/settings">
+          <li>Settings</li>
+        </a>
+        <a href="/login">
+          <li onClick={handleLogout}>Log out</li>
+        </a>
       </ul>
     </div>
   );
