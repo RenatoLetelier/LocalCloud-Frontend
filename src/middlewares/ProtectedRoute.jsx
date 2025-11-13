@@ -1,24 +1,14 @@
-/* eslint-disable no-unused-vars */
-import { Navigate } from "react-router-dom";
-import { jwtDecode } from "jwt-decode";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useContext } from "react";
+import { AuthContext } from "../context/Contexts.jsx";
 
-export default function ProtectedRoute({ children }) {
-  const token = localStorage.getItem("token");
+export default function ProtectedLayout() {
+  const { isAuthenticated } = useContext(AuthContext);
+  const location = useLocation();
 
-  if (!token) return <Navigate to="/login" replace />;
-
-  try {
-    const decoded = jwtDecode(token);
-    const now = Date.now() / 1000; // segundos
-
-    if (decoded.exp < now) {
-      localStorage.removeItem("token");
-      return <Navigate to="/login" replace />;
-    }
-  } catch (e) {
-    localStorage.removeItem("token");
-    return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return children;
+  return <Outlet />;
 }

@@ -1,6 +1,7 @@
 .header-container {
   display: flex;
-  padding: 0 10px;
+  height: 44px;
+  padding: 0 15px;
   justify-content: space-between;
   align-items: center;
 
@@ -15,6 +16,13 @@
   color: var(--text-1);
   font-size: 24px;
   font-weight: bold;
+}
+
+.section {
+  opacity: 0.3;
+  text-transform: capitalize;
+  font-weight: normal;
+  font-weight: 500;
 }
 
 .settings-section {

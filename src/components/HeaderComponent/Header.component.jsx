@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import ProfileIcon from "../../assets/Icons/ProfileIcon";
 import ThemeButtonComponent from "../ThemeButtonComponent/ThemeButton.component.jsx";
 import ArrowDownIcon from "../../assets/Icons/ArrowDown.jsx";
@@ -9,14 +10,22 @@ import "./Header.component.css";
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const profileRef = useRef(null);
+  const navigate = useNavigate();
+
+  const { pathname } = useLocation();
+  const pathSection = pathname.split("/")[1];
+
+  const handleClick = () => {
+    navigate("/");
+  };
 
   const handleOpen = () => setIsOpen(!isOpen);
 
   return (
     <header className="header-container">
-      <a href="/" className="title">
-        Local Cloud
-      </a>
+      <h1 className="title" onClick={handleClick}>
+        Local Cloud <span className="section">{pathSection}</span>
+      </h1>
       <div className="settings-section">
         <ThemeButtonComponent />
         <div className="profile-section" ref={profileRef} onClick={handleOpen}>
