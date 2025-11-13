@@ -1,0 +1,14 @@
+.img-wrapper {
+  width: 200px;
+  height: 200px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.imgItem {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
