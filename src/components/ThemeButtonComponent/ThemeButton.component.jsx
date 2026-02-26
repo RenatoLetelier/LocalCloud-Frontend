@@ -12,6 +12,8 @@ function getSystemPref() {
 }
 
 function getCurrentTheme() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored === "light" || stored === "dark") return stored;
   const attr = document.documentElement.getAttribute("data-theme");
   if (attr === "light" || attr === "dark") return attr;
   return getSystemPref();
@@ -35,7 +37,7 @@ export default function ThemeButtonComponent() {
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
-      console.log("Error saving 'data-theme' in localstorage");
+      console.warn("Error saving 'data-theme' in localstorage");
     }
   }, [theme]);
 
@@ -46,10 +48,8 @@ export default function ThemeButtonComponent() {
       <button
         className="button-theme-toggle"
         onClick={toggle}
-        aria-label={toggle}
-        aria-labelledby="theme-button"
+        aria-label="Toggle light/dark theme"
         id="theme-button"
-        role="button"
         title="Toggle light/dark theme"
       >
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
