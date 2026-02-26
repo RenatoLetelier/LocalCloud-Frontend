@@ -1,22 +1,24 @@
+import { Link } from "react-router-dom";
+import { useAuth } from "../../context/Contexts.jsx";
 import "./ProfileDropdown.component.css";
 
 export default function ProfileDropdownContent() {
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-  };
+  const { logout } = useAuth();
 
   return (
     <div className="profile-dropdown-container">
       <ul>
-        <a href="/profile">
-          <li>Profile</li>
-        </a>
-        <a href="/settings">
-          <li>Settings</li>
-        </a>
-        <a href="/login">
-          <li onClick={handleLogout}>Log out</li>
-        </a>
+        <li>
+          <Link to="/profile">Profile</Link>
+        </li>
+        <li>
+          <Link to="/settings">Settings</Link>
+        </li>
+        <li>
+          <button type="button" onClick={logout}>
+            Log out
+          </button>
+        </li>
       </ul>
     </div>
   );

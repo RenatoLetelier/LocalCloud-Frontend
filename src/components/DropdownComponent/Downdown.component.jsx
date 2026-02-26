@@ -52,15 +52,13 @@ export default function Dropdown({ isOpen, anchorRef, onClose, children }) {
     const ro = new ResizeObserver(updatePosition);
     ro.observe(anchor);
 
-    const raf1 = requestAnimationFrame(updatePosition);
-    const raf2 = requestAnimationFrame(updatePosition);
+    const raf = requestAnimationFrame(updatePosition);
 
     return () => {
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
       ro.disconnect();
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
+      cancelAnimationFrame(raf);
     };
   }, [isOpen, anchorRef]);
 
