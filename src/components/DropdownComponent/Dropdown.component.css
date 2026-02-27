@@ -1,0 +1,12 @@
+.dropdown-container {
+  position: fixed;
+  top: calc(var(--top) + .6rem);
+  left: auto;
+  right: var(--right, auto);
+  min-width: var(--minWidth, auto);
+  z-index: 1000;
+
+  background-color: var(--surface-2);
+  border: 1px solid var(--black);
+  border-radius: var(--radius);
+}

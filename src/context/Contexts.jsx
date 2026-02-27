@@ -1,5 +1,14 @@
 import { createContext, useContext } from "react";
 
+export const PhotosContext = createContext();
+export const usePhotos = () => {
+  const context = useContext(PhotosContext);
+  if (!context) {
+    throw new Error("usePhotos must be used within an PhotosProvider");
+  }
+  return context;
+};
+
 export const AuthContext = createContext();
 export const useAuth = () => {
   const context = useContext(AuthContext);

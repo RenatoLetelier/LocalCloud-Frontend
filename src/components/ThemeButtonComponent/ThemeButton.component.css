@@ -1,14 +1,17 @@
 .toggle-theme-button-container {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
   border-radius: 10px;
+  padding: .3rem;
+  margin: .3rem;
+  cursor: pointer;
+}
+.toggle-theme-button-container:hover {
+  background-color: var(--on-hover);
 }
 
 .button-theme-toggle {
+  display: flex;
   background: none;
   border: none;
-  padding: .5rem;
   cursor: pointer;
   color: inherit;
   font: inherit;

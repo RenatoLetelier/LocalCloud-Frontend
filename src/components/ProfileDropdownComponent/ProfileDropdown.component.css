@@ -1,0 +1,24 @@
+.profile-dropdown-container {
+  padding: .3rem;
+  font-size: medium;
+}
+
+.profile-dropdown-container ul {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+
+.profile-dropdown-container li {
+  border-radius: var(--radius);
+  padding: .3rem 3rem .3rem .5rem;
+  list-style: none;
+}
+.profile-dropdown-container li:hover {
+  background-color: var(--on-hover);
+}
+
+.profile-dropdown-container a {
+  color: var(--text-1);
+  text-decoration: none;
+}

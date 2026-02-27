@@ -16,10 +16,12 @@ html, body { height: 100%; }
   --l-primary: 40%;   /* 0–100% */
 
   --bg: hsl(var(--h) var(--s) var(--l));
-  --surface-1: hsl(var(--h) var(--s) 14%);
-  --surface-2: hsl(var(--h) var(--s) 18%);
-  --surface-3: hsl(var(--h) var(--s) 22%);
-  --surface-4: hsl(var(--h) var(--s) 26%);
+  --surface-1: hsl(var(--h) var(--s) 20%);
+  --surface-2: hsl(var(--h) var(--s) 25%);
+  --surface-3: hsl(var(--h) var(--s) 30%);
+  --surface-4: hsl(var(--h) var(--s) 35%);
+  
+  --on-hover: hsl(var(--h) var(--s) calc(var(--l) + 15%));
 
   --text-1:      hsl(0 0% 94%);
   --text-2:      hsl(0 0% 80%);
@@ -37,6 +39,8 @@ html, body { height: 100%; }
   --success:hsl(140 75% 40%);
   --warning:hsl(40 85% 52%);
   --error:  hsl(0 70% 52%);
+  --black: hsl(0, 0%, 0%);
+  --white: hsl(0, 0%, 100%);
 
   /* Tipografía y sombras */
   --font-system: system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -54,6 +58,14 @@ html, body { height: 100%; }
     --s: 0%;   /* 0–100% */
     --l: 97%;  /* 0–100% */
 
+    --bg: hsl(var(--h) var(--s) var(--l));
+    --surface-1: hsl(var(--h) var(--s) 92%);
+    --surface-2: hsl(var(--h) var(--s) 86%);
+    --surface-3: hsl(var(--h) var(--s) 78%);
+    --surface-4: hsl(var(--h) var(--s) 74%);
+
+    --on-hover: hsl(var(--h) var(--s) calc(var(--l) - 15%));
+
     --text-1:     hsl(0 0% 13%);
     --text-2:     hsl(0 0% 28%);
     --text-muted: hsl(0 0% 45%);
@@ -70,6 +82,14 @@ html[data-theme="light"] {
   --s: 0%;   /* 0–100% */
   --l: 97%;  /* 0–100% */
 
+  --bg: hsl(var(--h) var(--s) var(--l));
+  --surface-1: hsl(var(--h) var(--s) 92%);
+  --surface-2: hsl(var(--h) var(--s) 86%);
+  --surface-3: hsl(var(--h) var(--s) 78%);
+  --surface-4: hsl(var(--h) var(--s) 74%);
+
+  --on-hover: hsl(var(--h) var(--s) calc(var(--l) - 15%));
+
   --text-1:     hsl(0 0% 13%);
   --text-2:     hsl(0 0% 28%);
   --text-muted: hsl(0 0% 45%);
@@ -85,6 +105,14 @@ html[data-theme="dark"] {
   --s: 3%;  /* 0–100% */
   --l: 11%; /* 0–100% */
 
+  --bg: hsl(var(--h) var(--s) var(--l));
+  --surface-1: hsl(var(--h) var(--s) 14%);
+  --surface-2: hsl(var(--h) var(--s) 18%);
+  --surface-3: hsl(var(--h) var(--s) 22%);
+  --surface-4: hsl(var(--h) var(--s) 26%);
+
+  --on-hover: hsl(var(--h) var(--s) calc(var(--l) + 15%));
+
   --text-1:      hsl(0 0% 94%);
   --text-2:      hsl(0 0% 80%);
   --text-muted:  hsl(0 0% 65%);
@@ -98,21 +126,4 @@ html[data-theme="dark"] {
 body {
   min-height: 100vh;
   display: flex;
-}
-
-.alert { padding: .75rem 1rem; border-radius: calc(var(--radius) - 4px); }
-.alert.success {
-  background: hsl(140 40% calc(var(--s2-l) + 6%));
-  border: 1px solid hsl(140 45% calc(var(--s2-l) + 18%));
-  color: var(--text-1);
-}
-.alert.warning {
-  background: hsl(40 75%  calc(var(--s2-l) + 10%));
-  border: 1px solid hsl(40 80%  calc(var(--s2-l) + 22%));
-  color: var(--text-1);
-}
-.alert.error {
-  background: hsl(0 65%   calc(var(--s2-l) + 8%));
-  border: 1px solid hsl(0 70%   calc(var(--s2-l) + 20%));
-  color: var(--text-1);
 }
