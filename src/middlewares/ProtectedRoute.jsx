@@ -3,8 +3,10 @@ import { useContext } from "react";
 import { AuthContext } from "../context/Contexts.jsx";
 
 export default function ProtectedLayout() {
-  const { isAuthenticated } = useContext(AuthContext);
+  const { isAuthenticated, isInitializing } = useContext(AuthContext);
   const location = useLocation();
+
+  if (isInitializing) return null;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;

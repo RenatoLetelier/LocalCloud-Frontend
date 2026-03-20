@@ -5,6 +5,13 @@ import { getPhotos, getVideos, uploadMedia, deduplicateMedia } from "../../api/m
 import api from "../../api/axiosInstance.js";
 import "./GalleryPage.css";
 
+// Module-level cache: survives component remounts (e.g. navigating away and back)
+const mediaCache = { key: -1, photos: null, videos: null };
+
+// Blob URL cache: keeps fetched image/video blobs alive across component unmounts.
+// Without this, every PhotoThumb re-fetch its blob from the API when remounted.
+const blobUrlCache = new Map(); // filename → object URL
+
 const FILTERS = [
   { id: "all", label: "All", icon: "⊞" },
   { id: "photo", label: "Photos", icon: "🖼" },
@@ -21,23 +28,27 @@ function formatSize(bytes) {
 
 // Fetches a media file via axios (sends auth header) and returns a blob URL.
 // Blob URLs are safe for <img> / <video> and avoid ORB blocks.
+// Results are cached in blobUrlCache so remounting (e.g. switching filters) never re-fetches.
 function useAuthBlob(filename) {
-  const [src, setSrc] = useState(null);
+  const [src, setSrc] = useState(() => blobUrlCache.get(filename) ?? null);
 
   useEffect(() => {
     if (!filename) return;
-    let objectUrl;
+    if (blobUrlCache.has(filename)) {
+      setSrc(blobUrlCache.get(filename));
+      return;
+    }
+    let cancelled = false;
     api
       .get(`/api/media/file/${filename}`, { responseType: "blob" })
       .then((res) => {
-        objectUrl = URL.createObjectURL(res.data);
-        setSrc(objectUrl);
+        const url = URL.createObjectURL(res.data);
+        blobUrlCache.set(filename, url);
+        if (!cancelled) setSrc(url);
       })
       .catch(() => {});
 
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    return () => { cancelled = true; };
   }, [filename]);
 
   return src;
@@ -136,25 +147,38 @@ export default function GalleryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const cacheWarm = mediaCache.key === refreshKey && mediaCache.photos && mediaCache.videos;
+    if (!cacheWarm) setLoading(true);
     setError(null);
 
     const fetchData = async () => {
       try {
-        let fetched = [];
-        if (filter === "all") {
-          const [photosRes, videosRes] = await Promise.all([getPhotos(), getVideos()]);
-          fetched = [
-            ...(photosRes.data.data ?? []),
-            ...(videosRes.data.data ?? []),
-          ];
-        } else if (filter === "photo") {
-          const res = await getPhotos();
-          fetched = res.data.data ?? [];
-        } else {
-          const res = await getVideos();
-          fetched = res.data.data ?? [];
+        // Invalidate caches when refreshKey changes (after upload/deduplicate)
+        if (mediaCache.key !== refreshKey) {
+          mediaCache.key = refreshKey;
+          mediaCache.photos = null;
+          mediaCache.videos = null;
+          blobUrlCache.clear();
         }
+
+        // Always fetch both so switching filters never triggers a reload
+        const fetches = [];
+        if (!mediaCache.photos) fetches.push(getPhotos().then((r) => { mediaCache.photos = r.data.data ?? []; }));
+        if (!mediaCache.videos) fetches.push(getVideos().then((r) => { mediaCache.videos = r.data.data ?? []; }));
+        await Promise.all(fetches);
+
+        // Combine and deduplicate by filename (guards against items returned by both endpoints)
+        const seen = new Set();
+        const all = [...mediaCache.photos, ...mediaCache.videos].filter((item) => {
+          if (seen.has(item.filename)) return false;
+          seen.add(item.filename);
+          return true;
+        });
+
+        const fetched =
+          filter === "photo" ? all.filter((i) => i.type === "photo") :
+          filter === "video" ? all.filter((i) => i.type === "video") :
+          all;
 
         fetched.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
         if (!cancelled) setItems(fetched);
@@ -305,13 +329,13 @@ export default function GalleryPage() {
               {items.map((item) =>
                 item.type === "photo" ? (
                   <PhotoThumb
-                    key={item.id}
+                    key={item.filename}
                     item={item}
                     onClick={() => setSelected(item)}
                   />
                 ) : (
                   <VideoThumb
-                    key={item.id}
+                    key={item.filename}
                     item={item}
                     onClick={() => setSelected(item)}
                   />
