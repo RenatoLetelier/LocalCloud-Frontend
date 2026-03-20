@@ -5,6 +5,9 @@ import { getPhotos, getVideos, uploadMedia, deduplicateMedia } from "../../api/m
 import api from "../../api/axiosInstance.js";
 import "./GalleryPage.css";
 
+// Module-level cache: survives component remounts (e.g. navigating away and back)
+const mediaCache = { key: -1, photos: null, videos: null };
+
 const FILTERS = [
   { id: "all", label: "All", icon: "⊞" },
   { id: "photo", label: "Photos", icon: "🖼" },
@@ -134,9 +137,6 @@ export default function GalleryPage() {
   const fileInputRef = useRef(null);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Cache keyed by refreshKey so it auto-invalidates after upload/deduplicate
-  const mediaCache = useRef({ key: -1, photos: null, videos: null });
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -145,19 +145,21 @@ export default function GalleryPage() {
     const fetchData = async () => {
       try {
         // Invalidate cache when refreshKey changes (after upload/deduplicate)
-        if (mediaCache.current.key !== refreshKey) {
-          mediaCache.current = { key: refreshKey, photos: null, videos: null };
+        if (mediaCache.key !== refreshKey) {
+          mediaCache.key = refreshKey;
+          mediaCache.photos = null;
+          mediaCache.videos = null;
         }
 
         // Always fetch both so switching filters never triggers a reload
         const fetches = [];
-        if (!mediaCache.current.photos) fetches.push(getPhotos().then((r) => { mediaCache.current.photos = r.data.data ?? []; }));
-        if (!mediaCache.current.videos) fetches.push(getVideos().then((r) => { mediaCache.current.videos = r.data.data ?? []; }));
+        if (!mediaCache.photos) fetches.push(getPhotos().then((r) => { mediaCache.photos = r.data.data ?? []; }));
+        if (!mediaCache.videos) fetches.push(getVideos().then((r) => { mediaCache.videos = r.data.data ?? []; }));
         await Promise.all(fetches);
 
         // Combine and deduplicate by filename (guards against items returned by both endpoints)
         const seen = new Set();
-        const all = [...mediaCache.current.photos, ...mediaCache.current.videos].filter((item) => {
+        const all = [...mediaCache.photos, ...mediaCache.videos].filter((item) => {
           if (seen.has(item.filename)) return false;
           seen.add(item.filename);
           return true;
@@ -317,13 +319,13 @@ export default function GalleryPage() {
               {items.map((item) =>
                 item.type === "photo" ? (
                   <PhotoThumb
-                    key={item.id}
+                    key={item.filename}
                     item={item}
                     onClick={() => setSelected(item)}
                   />
                 ) : (
                   <VideoThumb
-                    key={item.id}
+                    key={item.filename}
                     item={item}
                     onClick={() => setSelected(item)}
                   />
