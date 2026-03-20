@@ -193,7 +193,7 @@ export default function GalleryPage() {
     setUploadError(null);
     try {
       const formData = new FormData();
-      Array.from(files).forEach((f) => formData.append("file", f));
+      Array.from(files).forEach((f) => formData.append("files", f));
       await uploadMedia(formData);
       refresh();
     } catch (err) {
