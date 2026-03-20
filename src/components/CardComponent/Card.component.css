@@ -1,7 +1,35 @@
 .card-container {
-  border: 1px solid var(--text-1);
-  padding: 16px;
-  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
   background-color: var(--surface-1);
+  color: var(--text-1);
+  text-decoration: none;
   cursor: pointer;
+  transition: background-color 0.15s, transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  min-width: 160px;
+  min-height: 140px;
+}
+
+.card-container:hover {
+  background-color: var(--surface-2);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+
+.card-icon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.card-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-1);
 }
