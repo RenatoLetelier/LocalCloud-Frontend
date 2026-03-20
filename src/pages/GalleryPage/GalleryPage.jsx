@@ -1,15 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
-import { getPhotos, getVideos } from "../../api/media.js";
+import { useAuth } from "../../context/Contexts.jsx";
+import { getPhotos, getVideos, uploadMedia, deduplicateMedia } from "../../api/media.js";
 import "./GalleryPage.css";
 
 const FILTERS = [
-  { id: "all", label: "All" },
-  { id: "photo", label: "Photos" },
-  { id: "video", label: "Videos" },
+  { id: "all", label: "All", icon: "⊞" },
+  { id: "photo", label: "Photos", icon: "🖼" },
+  { id: "video", label: "Videos", icon: "🎬" },
 ];
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
+
+function mediaUrl(filename) {
+  return `${API_URL}/api/media/file/${filename}`;
+}
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -18,11 +23,24 @@ function formatSize(bytes) {
 }
 
 export default function GalleryPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const [filter, setFilter] = useState("all");
+  const [refreshKey, setRefreshKey] = useState(0);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
+
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [dedupeLoading, setDedupeLoading] = useState(false);
+  const [dedupeMessage, setDedupeMessage] = useState(null);
+
+  const fileInputRef = useRef(null);
+
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,10 +51,7 @@ export default function GalleryPage() {
       try {
         let fetched = [];
         if (filter === "all") {
-          const [photosRes, videosRes] = await Promise.all([
-            getPhotos(),
-            getVideos(),
-          ]);
+          const [photosRes, videosRes] = await Promise.all([getPhotos(), getVideos()]);
           fetched = [
             ...(photosRes.data.data ?? []),
             ...(videosRes.data.data ?? []),
@@ -50,7 +65,6 @@ export default function GalleryPage() {
         }
 
         fetched.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
-
         if (!cancelled) setItems(fetched);
       } catch (err) {
         if (!cancelled) setError(err.message ?? "Failed to load media");
@@ -60,10 +74,8 @@ export default function GalleryPage() {
     };
 
     fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, [filter]);
+    return () => { cancelled = true; };
+  }, [filter, refreshKey]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Escape") setSelected(null);
@@ -82,6 +94,39 @@ export default function GalleryPage() {
     };
   }, [selected, handleKeyDown]);
 
+  const handleUpload = async (e) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    setUploadLoading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach((f) => formData.append("file", f));
+      await uploadMedia(formData);
+      refresh();
+    } catch (err) {
+      setUploadError(err.message ?? "Upload failed");
+    } finally {
+      setUploadLoading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDeduplicate = async () => {
+    if (!window.confirm("Remove all duplicate files? This cannot be undone.")) return;
+    setDedupeLoading(true);
+    setDedupeMessage(null);
+    try {
+      const res = await deduplicateMedia();
+      setDedupeMessage(res.data?.message ?? "Done");
+      refresh();
+    } catch (err) {
+      setDedupeMessage(err.message ?? "Failed");
+    } finally {
+      setDedupeLoading(false);
+    }
+  };
+
   return (
     <div className="gallery-page">
       <Header />
@@ -96,11 +141,7 @@ export default function GalleryPage() {
                 className={`sidebar-btn${filter === f.id ? " active" : ""}`}
                 onClick={() => setFilter(f.id)}
               >
-                <span className="sidebar-btn-icon">
-                  {f.id === "all" && "⊞"}
-                  {f.id === "photo" && "🖼"}
-                  {f.id === "video" && "🎬"}
-                </span>
+                <span className="sidebar-btn-icon">{f.icon}</span>
                 {f.label}
               </button>
             ))}
@@ -110,6 +151,40 @@ export default function GalleryPage() {
             <p className="sidebar-count">
               {items.length} item{items.length !== 1 ? "s" : ""}
             </p>
+          )}
+
+          {isAdmin && (
+            <div className="admin-section">
+              <p className="sidebar-title">Admin</p>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                style={{ display: "none" }}
+                onChange={handleUpload}
+              />
+              <button
+                className="admin-btn upload-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadLoading}
+              >
+                <span>↑</span>
+                {uploadLoading ? "Uploading…" : "Upload"}
+              </button>
+              {uploadError && <p className="admin-msg error">{uploadError}</p>}
+
+              <button
+                className="admin-btn dedupe-btn"
+                onClick={handleDeduplicate}
+                disabled={dedupeLoading}
+              >
+                <span>⊗</span>
+                {dedupeLoading ? "Running…" : "Deduplicate"}
+              </button>
+              {dedupeMessage && <p className="admin-msg">{dedupeMessage}</p>}
+            </div>
           )}
         </aside>
 
@@ -144,17 +219,13 @@ export default function GalleryPage() {
                 >
                   {item.type === "photo" ? (
                     <img
-                      src={`${API_URL}${item.url}`}
+                      src={mediaUrl(item.filename)}
                       alt={item.filename}
                       loading="lazy"
                     />
                   ) : (
                     <div className="video-thumb-wrapper">
-                      <video
-                        src={`${API_URL}${item.url}`}
-                        preload="metadata"
-                        muted
-                      />
+                      <video src={mediaUrl(item.filename)} preload="metadata" muted />
                       <div className="play-overlay">
                         <span className="play-icon">▶</span>
                       </div>
@@ -190,13 +261,13 @@ export default function GalleryPage() {
             <div className="lightbox-media">
               {selected.type === "photo" ? (
                 <img
-                  src={`${API_URL}${selected.url}`}
+                  src={mediaUrl(selected.filename)}
                   alt={selected.filename}
                   className="lightbox-image"
                 />
               ) : (
                 <video
-                  src={`${API_URL}${selected.url}`}
+                  src={mediaUrl(selected.filename)}
                   controls
                   autoPlay
                   className="lightbox-video"
