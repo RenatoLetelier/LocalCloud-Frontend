@@ -8,6 +8,10 @@ import "./GalleryPage.css";
 // Module-level cache: survives component remounts (e.g. navigating away and back)
 const mediaCache = { key: -1, photos: null, videos: null };
 
+// Blob URL cache: keeps fetched image/video blobs alive across component unmounts.
+// Without this, every PhotoThumb re-fetch its blob from the API when remounted.
+const blobUrlCache = new Map(); // filename → object URL
+
 const FILTERS = [
   { id: "all", label: "All", icon: "⊞" },
   { id: "photo", label: "Photos", icon: "🖼" },
@@ -24,23 +28,27 @@ function formatSize(bytes) {
 
 // Fetches a media file via axios (sends auth header) and returns a blob URL.
 // Blob URLs are safe for <img> / <video> and avoid ORB blocks.
+// Results are cached in blobUrlCache so remounting (e.g. switching filters) never re-fetches.
 function useAuthBlob(filename) {
-  const [src, setSrc] = useState(null);
+  const [src, setSrc] = useState(() => blobUrlCache.get(filename) ?? null);
 
   useEffect(() => {
     if (!filename) return;
-    let objectUrl;
+    if (blobUrlCache.has(filename)) {
+      setSrc(blobUrlCache.get(filename));
+      return;
+    }
+    let cancelled = false;
     api
       .get(`/api/media/file/${filename}`, { responseType: "blob" })
       .then((res) => {
-        objectUrl = URL.createObjectURL(res.data);
-        setSrc(objectUrl);
+        const url = URL.createObjectURL(res.data);
+        blobUrlCache.set(filename, url);
+        if (!cancelled) setSrc(url);
       })
       .catch(() => {});
 
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    return () => { cancelled = true; };
   }, [filename]);
 
   return src;
@@ -139,16 +147,18 @@ export default function GalleryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const cacheWarm = mediaCache.key === refreshKey && mediaCache.photos && mediaCache.videos;
+    if (!cacheWarm) setLoading(true);
     setError(null);
 
     const fetchData = async () => {
       try {
-        // Invalidate cache when refreshKey changes (after upload/deduplicate)
+        // Invalidate caches when refreshKey changes (after upload/deduplicate)
         if (mediaCache.key !== refreshKey) {
           mediaCache.key = refreshKey;
           mediaCache.photos = null;
           mediaCache.videos = null;
+          blobUrlCache.clear();
         }
 
         // Always fetch both so switching filters never triggers a reload
