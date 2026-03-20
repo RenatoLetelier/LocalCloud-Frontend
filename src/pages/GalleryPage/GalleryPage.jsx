@@ -144,23 +144,30 @@ export default function GalleryPage() {
 
     const fetchData = async () => {
       try {
-        // Invalidate cache when refreshKey changes
+        // Invalidate cache when refreshKey changes (after upload/deduplicate)
         if (mediaCache.current.key !== refreshKey) {
           mediaCache.current = { key: refreshKey, photos: null, videos: null };
         }
 
-        const needPhotos = filter === "all" || filter === "photo";
-        const needVideos = filter === "all" || filter === "video";
-
+        // Always fetch both so switching filters never triggers a reload
         const fetches = [];
-        if (needPhotos && !mediaCache.current.photos) fetches.push(getPhotos().then((r) => { mediaCache.current.photos = r.data.data ?? []; }));
-        if (needVideos && !mediaCache.current.videos) fetches.push(getVideos().then((r) => { mediaCache.current.videos = r.data.data ?? []; }));
+        if (!mediaCache.current.photos) fetches.push(getPhotos().then((r) => { mediaCache.current.photos = r.data.data ?? []; }));
+        if (!mediaCache.current.videos) fetches.push(getVideos().then((r) => { mediaCache.current.videos = r.data.data ?? []; }));
         await Promise.all(fetches);
 
-        const fetched = [
-          ...(needPhotos ? mediaCache.current.photos : []),
-          ...(needVideos ? mediaCache.current.videos : []),
-        ];
+        // Combine and deduplicate by filename (guards against items returned by both endpoints)
+        const seen = new Set();
+        const all = [...mediaCache.current.photos, ...mediaCache.current.videos].filter((item) => {
+          if (seen.has(item.filename)) return false;
+          seen.add(item.filename);
+          return true;
+        });
+
+        const fetched =
+          filter === "photo" ? all.filter((i) => i.type === "photo") :
+          filter === "video" ? all.filter((i) => i.type === "video") :
+          all;
+
         fetched.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
         if (!cancelled) setItems(fetched);
       } catch (err) {
