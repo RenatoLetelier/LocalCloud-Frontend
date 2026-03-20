@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
 import { getPhotos, getVideos, uploadMedia, deduplicateMedia } from "../../api/media.js";
+import api from "../../api/axiosInstance.js";
 import "./GalleryPage.css";
 
 const FILTERS = [
@@ -12,15 +13,122 @@ const FILTERS = [
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 
-function mediaUrl(filename) {
-  return `${API_URL}/api/media/file/${filename}`;
-}
-
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+// Fetches a media file via axios (sends auth header) and returns a blob URL.
+// Blob URLs are safe for <img> / <video> and avoid ORB blocks.
+function useAuthBlob(filename) {
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    if (!filename) return;
+    let objectUrl;
+    api
+      .get(`/api/media/file/${filename}`, { responseType: "blob" })
+      .then((res) => {
+        objectUrl = URL.createObjectURL(res.data);
+        setSrc(objectUrl);
+      })
+      .catch(() => {});
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [filename]);
+
+  return src;
+}
+
+// For videos we need streaming (not a pre-downloaded blob), so we pass the
+// token as a query param instead. Your backend must support ?token= for media.
+function videoUrl(filename) {
+  const token = localStorage.getItem("token");
+  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${API_URL}/api/media/file/${filename}${qs}`;
+}
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+
+function PhotoThumb({ item, onClick }) {
+  const src = useAuthBlob(item.filename);
+  return (
+    <button className="media-thumb" onClick={onClick} title={item.filename}>
+      {src ? (
+        <img src={src} alt={item.filename} />
+      ) : (
+        <div className="thumb-placeholder" />
+      )}
+      <div className="thumb-overlay">
+        <span className="thumb-name">{item.filename}</span>
+      </div>
+    </button>
+  );
+}
+
+function VideoThumb({ item, onClick }) {
+  return (
+    <button className="media-thumb" onClick={onClick} title={item.filename}>
+      <div className="video-placeholder">
+        <span className="play-icon">▶</span>
+      </div>
+      <div className="thumb-overlay">
+        <span className="thumb-name">{item.filename}</span>
+      </div>
+    </button>
+  );
+}
+
+function Lightbox({ item, onClose }) {
+  const photoSrc = useAuthBlob(item.type === "photo" ? item.filename : null);
+
+  return (
+    <div
+      className="lightbox-backdrop"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Media viewer"
+    >
+      <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+        <button className="lightbox-close" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+
+        <div className="lightbox-media">
+          {item.type === "photo" ? (
+            photoSrc ? (
+              <img src={photoSrc} alt={item.filename} className="lightbox-image" />
+            ) : (
+              <div className="lightbox-loading">
+                <div className="spinner" />
+              </div>
+            )
+          ) : (
+            <video
+              src={videoUrl(item.filename)}
+              controls
+              autoPlay
+              className="lightbox-video"
+            />
+          )}
+        </div>
+
+        <div className="lightbox-info">
+          <span className="lightbox-filename">{item.filename}</span>
+          <span className="lightbox-meta">
+            {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ───────────────────────────────────────────────────────────────
 
 export default function GalleryPage() {
   const { user } = useAuth();
@@ -39,7 +147,6 @@ export default function GalleryPage() {
   const [dedupeMessage, setDedupeMessage] = useState(null);
 
   const fileInputRef = useRef(null);
-
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
@@ -210,80 +317,27 @@ export default function GalleryPage() {
 
           {!loading && !error && items.length > 0 && (
             <div className="media-grid">
-              {items.map((item) => (
-                <button
-                  key={item.id}
-                  className="media-thumb"
-                  onClick={() => setSelected(item)}
-                  title={item.filename}
-                >
-                  {item.type === "photo" ? (
-                    <img
-                      src={mediaUrl(item.filename)}
-                      alt={item.filename}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="video-thumb-wrapper">
-                      <video src={mediaUrl(item.filename)} preload="metadata" muted />
-                      <div className="play-overlay">
-                        <span className="play-icon">▶</span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="thumb-overlay">
-                    <span className="thumb-name">{item.filename}</span>
-                  </div>
-                </button>
-              ))}
+              {items.map((item) =>
+                item.type === "photo" ? (
+                  <PhotoThumb
+                    key={item.id}
+                    item={item}
+                    onClick={() => setSelected(item)}
+                  />
+                ) : (
+                  <VideoThumb
+                    key={item.id}
+                    item={item}
+                    onClick={() => setSelected(item)}
+                  />
+                )
+              )}
             </div>
           )}
         </main>
       </div>
 
-      {selected && (
-        <div
-          className="lightbox-backdrop"
-          onClick={() => setSelected(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Media viewer"
-        >
-          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="lightbox-close"
-              onClick={() => setSelected(null)}
-              aria-label="Close"
-            >
-              ✕
-            </button>
-
-            <div className="lightbox-media">
-              {selected.type === "photo" ? (
-                <img
-                  src={mediaUrl(selected.filename)}
-                  alt={selected.filename}
-                  className="lightbox-image"
-                />
-              ) : (
-                <video
-                  src={mediaUrl(selected.filename)}
-                  controls
-                  autoPlay
-                  className="lightbox-video"
-                />
-              )}
-            </div>
-
-            <div className="lightbox-info">
-              <span className="lightbox-filename">{selected.filename}</span>
-              <span className="lightbox-meta">
-                {formatSize(selected.size)} · {new Date(selected.mtime).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {selected && <Lightbox item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
