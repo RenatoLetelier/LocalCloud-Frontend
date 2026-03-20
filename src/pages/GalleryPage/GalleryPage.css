@@ -138,8 +138,10 @@
 /* ── Main content area ─────────────────────────────────── */
 .gallery-main {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Status states ─────────────────────────────────────── */
@@ -149,8 +151,8 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  height: 100%;
-  min-height: 300px;
+  flex: 1;
+  min-height: 200px;
   color: var(--text-muted);
 }
 
@@ -303,7 +305,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 90vw;
+  flex: 1;
+  min-width: 0;
   max-height: 90vh;
   animation: scale-in 0.2s ease;
 }
@@ -392,35 +395,108 @@
   flex-shrink: 0;
 }
 
-/* ── Lightbox navigation arrows ────────────────────────── */
+/* ── Lightbox row: arrows + content side by side ───────── */
+.lightbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: calc(min(90vw, 960px) + 160px);
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+/* Fixed-width slots so content stays centered regardless of which arrow shows */
+.lightbox-nav-slot {
+  width: 64px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .lightbox-nav {
-  position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
   background: rgba(255, 255, 255, 0.15);
   border: none;
   border-radius: 50%;
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 32px;
+  font-size: 30px;
   line-height: 1;
   cursor: pointer;
   transition: background-color 0.15s;
   backdrop-filter: blur(4px);
-  z-index: 1001;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .lightbox-nav:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.lightbox-prev { left: 20px; }
-.lightbox-next { right: 20px; }
+/* ── Pagination ─────────────────────────────────────────── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 12px 0 0;
+  flex-shrink: 0;
+}
+
+.pagination-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.pagination-btn.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pagination-arrow {
+  font-size: 20px;
+  font-weight: 400;
+  min-width: 36px;
+}
+
+.pagination-ellipsis {
+  color: var(--text-muted);
+  font-size: 14px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  user-select: none;
+}
 
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 600px) {
@@ -445,5 +521,33 @@
 
   .media-grid {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+
+  /* Compact lightbox arrows on mobile */
+  .lightbox-nav-slot {
+    width: 36px;
+  }
+
+  .lightbox-nav {
+    width: 36px;
+    height: 36px;
+    font-size: 22px;
+  }
+
+  .lightbox-row {
+    gap: 4px;
+    padding: 0 4px;
+  }
+
+  /* Compact pagination on mobile */
+  .pagination-btn {
+    min-width: 32px;
+    height: 32px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .pagination-arrow {
+    font-size: 18px;
   }
 }

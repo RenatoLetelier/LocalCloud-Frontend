@@ -12,6 +12,87 @@ const mediaCache = { key: -1, photos: null, videos: null };
 // Without this, every PhotoThumb re-fetch its blob from the API when remounted.
 const blobUrlCache = new Map(); // filename → object URL
 
+// ── Items-per-page: fills exactly one screen based on container size ─────────
+const GRID_GAP = 10;
+const PAGINATION_H = 56; // approximate height of pagination bar
+
+function useItemsPerPage(containerRef) {
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const calc = () => {
+      const padX = 20, padY = 20;
+      const w = el.clientWidth  - padX * 2;
+      const h = el.clientHeight - padY * 2 - PAGINATION_H;
+      const minItem = window.innerWidth <= 600 ? 120 : 160;
+      const cols = Math.max(1, Math.floor((w + GRID_GAP) / (minItem + GRID_GAP)));
+      const rows = Math.max(1, Math.floor((h + GRID_GAP) / (minItem + GRID_GAP)));
+      setItemsPerPage(cols * rows);
+    };
+
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [containerRef]);
+
+  return itemsPerPage;
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+function Pagination({ currentPage, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null;
+
+  // Build the page number list with ellipsis
+  const pages = [];
+  if (totalPages <= 7) {
+    for (let i = 0; i < totalPages; i++) pages.push(i);
+  } else {
+    pages.push(0);
+    if (currentPage > 2) pages.push("…");
+    for (let i = Math.max(1, currentPage - 1); i <= Math.min(totalPages - 2, currentPage + 1); i++) {
+      pages.push(i);
+    }
+    if (currentPage < totalPages - 3) pages.push("…");
+    pages.push(totalPages - 1);
+  }
+
+  return (
+    <nav className="pagination" aria-label="Page navigation">
+      <button
+        className="pagination-btn pagination-arrow"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 0}
+        aria-label="Previous page"
+      >‹</button>
+
+      {pages.map((p, i) =>
+        typeof p === "string" ? (
+          <span key={`e${i}`} className="pagination-ellipsis">…</span>
+        ) : (
+          <button
+            key={p}
+            className={`pagination-btn${p === currentPage ? " active" : ""}`}
+            onClick={() => onPageChange(p)}
+            aria-current={p === currentPage ? "page" : undefined}
+          >{p + 1}</button>
+        )
+      )}
+
+      <button
+        className="pagination-btn pagination-arrow"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages - 1}
+        aria-label="Next page"
+      >›</button>
+    </nav>
+  );
+}
+
 const FILTERS = [
   { id: "all", label: "All", icon: "⊞" },
   { id: "photo", label: "Photos", icon: "🖼" },
@@ -129,43 +210,52 @@ function Lightbox({ item, items, onClose, onNavigate }) {
       aria-modal="true"
       aria-label="Media viewer"
     >
-      {hasPrev && (
-        <button
-          className="lightbox-nav lightbox-prev"
-          onClick={(e) => { e.stopPropagation(); onNavigate(items[currentIndex - 1]); }}
-          aria-label="Previous"
-        >‹</button>
-      )}
-      {hasNext && (
-        <button
-          className="lightbox-nav lightbox-next"
-          onClick={(e) => { e.stopPropagation(); onNavigate(items[currentIndex + 1]); }}
-          aria-label="Next"
-        >›</button>
-      )}
-
-      <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-        <button className="lightbox-close" onClick={onClose} aria-label="Close">
-          ✕
-        </button>
-
-        <div className="lightbox-media">
-          {!mediaSrc ? (
-            <div className="lightbox-loading">
-              <div className="spinner" />
-            </div>
-          ) : item.type === "photo" ? (
-            <img src={mediaSrc} alt={item.filename} className="lightbox-image" />
-          ) : (
-            <video src={mediaSrc} controls autoPlay className="lightbox-video" />
+      {/* lightbox-row keeps arrows and content in a flex row so arrows are
+          vertically centered with the media, not with the full viewport */}
+      <div className="lightbox-row">
+        <div className="lightbox-nav-slot">
+          {hasPrev && (
+            <button
+              className="lightbox-nav"
+              onClick={(e) => { e.stopPropagation(); onNavigate(items[currentIndex - 1]); }}
+              aria-label="Previous"
+            >‹</button>
           )}
         </div>
 
-        <div className="lightbox-info">
-          <span className="lightbox-filename">{item.filename}</span>
-          <span className="lightbox-meta">
-            {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
-          </span>
+        <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+          <button className="lightbox-close" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+
+          <div className="lightbox-media">
+            {!mediaSrc ? (
+              <div className="lightbox-loading">
+                <div className="spinner" />
+              </div>
+            ) : item.type === "photo" ? (
+              <img src={mediaSrc} alt={item.filename} className="lightbox-image" />
+            ) : (
+              <video src={mediaSrc} controls autoPlay className="lightbox-video" />
+            )}
+          </div>
+
+          <div className="lightbox-info">
+            <span className="lightbox-filename">{item.filename}</span>
+            <span className="lightbox-meta">
+              {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
+            </span>
+          </div>
+        </div>
+
+        <div className="lightbox-nav-slot">
+          {hasNext && (
+            <button
+              className="lightbox-nav"
+              onClick={(e) => { e.stopPropagation(); onNavigate(items[currentIndex + 1]); }}
+              aria-label="Next"
+            >›</button>
+          )}
         </div>
       </div>
     </div>
@@ -190,8 +280,31 @@ export default function GalleryPage() {
   const [dedupeLoading, setDedupeLoading] = useState(false);
   const [dedupeMessage, setDedupeMessage] = useState(null);
 
+  const mainRef = useRef(null);
   const fileInputRef = useRef(null);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const itemsPerPage = useItemsPerPage(mainRef);
+  const [currentPage, setCurrentPage] = useState(0);
+
+  // Reset to page 0 whenever the filter or data changes
+  useEffect(() => { setCurrentPage(0); }, [filter, refreshKey]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage));
+
+  // Clamp current page if total pages shrinks (e.g. screen gets bigger)
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(p, totalPages - 1));
+  }, [totalPages]);
+
+  const pageItems = items.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
+
+  // Navigate in lightbox and keep the background page in sync
+  const handleLightboxNavigate = useCallback((item) => {
+    setSelected(item);
+    const idx = items.findIndex((i) => i.filename === item.filename);
+    if (idx !== -1) setCurrentPage(Math.floor(idx / itemsPerPage));
+  }, [items, itemsPerPage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,7 +448,7 @@ export default function GalleryPage() {
           )}
         </aside>
 
-        <main className="gallery-main">
+        <main className="gallery-main" ref={mainRef}>
           {loading && (
             <div className="gallery-status">
               <div className="spinner" />
@@ -356,23 +469,30 @@ export default function GalleryPage() {
           )}
 
           {!loading && !error && items.length > 0 && (
-            <div className="media-grid">
-              {items.map((item) =>
-                item.type === "photo" ? (
-                  <PhotoThumb
-                    key={item.filename}
-                    item={item}
-                    onClick={() => setSelected(item)}
-                  />
-                ) : (
-                  <VideoThumb
-                    key={item.filename}
-                    item={item}
-                    onClick={() => setSelected(item)}
-                  />
-                )
-              )}
-            </div>
+            <>
+              <div className="media-grid">
+                {pageItems.map((item) =>
+                  item.type === "photo" ? (
+                    <PhotoThumb
+                      key={item.filename}
+                      item={item}
+                      onClick={() => setSelected(item)}
+                    />
+                  ) : (
+                    <VideoThumb
+                      key={item.filename}
+                      item={item}
+                      onClick={() => setSelected(item)}
+                    />
+                  )
+                )}
+              </div>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </>
           )}
         </main>
       </div>
@@ -382,7 +502,7 @@ export default function GalleryPage() {
           item={selected}
           items={items}
           onClose={() => setSelected(null)}
-          onNavigate={setSelected}
+          onNavigate={handleLightboxNavigate}
         />
       )}
     </div>
