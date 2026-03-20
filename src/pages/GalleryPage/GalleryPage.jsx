@@ -73,11 +73,26 @@ function PhotoThumb({ item, onClick }) {
 }
 
 function VideoThumb({ item, onClick }) {
+  const src = useAuthBlob(item.filename);
+  const videoRef = useRef(null);
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
-      <div className="video-placeholder">
-        <span className="play-icon">▶</span>
-      </div>
+      {src ? (
+        <video
+          ref={videoRef}
+          src={src}
+          className="thumb-video"
+          preload="metadata"
+          muted
+          playsInline
+          onLoadedMetadata={() => {
+            if (videoRef.current) videoRef.current.currentTime = 1;
+          }}
+        />
+      ) : (
+        <div className="thumb-placeholder" />
+      )}
+      <span className="play-badge">▶</span>
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
       </div>
@@ -85,8 +100,26 @@ function VideoThumb({ item, onClick }) {
   );
 }
 
-function Lightbox({ item, onClose }) {
+function Lightbox({ item, items, onClose, onNavigate }) {
   const mediaSrc = useAuthBlob(item.filename);
+  const currentIndex = items.findIndex((i) => i.filename === item.filename);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < items.length - 1;
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft" && hasPrev) onNavigate(items[currentIndex - 1]);
+      if (e.key === "ArrowRight" && hasNext) onNavigate(items[currentIndex + 1]);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [currentIndex, hasPrev, hasNext, items, onNavigate, onClose]);
 
   return (
     <div
@@ -96,6 +129,21 @@ function Lightbox({ item, onClose }) {
       aria-modal="true"
       aria-label="Media viewer"
     >
+      {hasPrev && (
+        <button
+          className="lightbox-nav lightbox-prev"
+          onClick={(e) => { e.stopPropagation(); onNavigate(items[currentIndex - 1]); }}
+          aria-label="Previous"
+        >‹</button>
+      )}
+      {hasNext && (
+        <button
+          className="lightbox-nav lightbox-next"
+          onClick={(e) => { e.stopPropagation(); onNavigate(items[currentIndex + 1]); }}
+          aria-label="Next"
+        >›</button>
+      )}
+
       <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
         <button className="lightbox-close" onClick={onClose} aria-label="Close">
           ✕
@@ -192,23 +240,6 @@ export default function GalleryPage() {
     fetchData();
     return () => { cancelled = true; };
   }, [filter, refreshKey]);
-
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === "Escape") setSelected(null);
-  }, []);
-
-  useEffect(() => {
-    if (selected) {
-      document.body.style.overflow = "hidden";
-      window.addEventListener("keydown", handleKeyDown);
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [selected, handleKeyDown]);
 
   const handleUpload = async (e) => {
     const files = e.target.files;
@@ -346,7 +377,14 @@ export default function GalleryPage() {
         </main>
       </div>
 
-      {selected && <Lightbox item={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <Lightbox
+          item={selected}
+          items={items}
+          onClose={() => setSelected(null)}
+          onNavigate={setSelected}
+        />
+      )}
     </div>
   );
 }
