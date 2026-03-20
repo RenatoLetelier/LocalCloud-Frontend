@@ -43,14 +43,6 @@ function useAuthBlob(filename) {
   return src;
 }
 
-// For videos we need streaming (not a pre-downloaded blob), so we pass the
-// token as a query param instead. Your backend must support ?token= for media.
-function videoUrl(filename) {
-  const token = localStorage.getItem("token");
-  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-  return `${API_URL}/api/media/file/${filename}${qs}`;
-}
-
 // ── Sub-components ──────────────────────────────────────────────────────────
 
 function PhotoThumb({ item, onClick }) {
@@ -83,7 +75,7 @@ function VideoThumb({ item, onClick }) {
 }
 
 function Lightbox({ item, onClose }) {
-  const photoSrc = useAuthBlob(item.type === "photo" ? item.filename : null);
+  const mediaSrc = useAuthBlob(item.filename);
 
   return (
     <div
@@ -99,21 +91,14 @@ function Lightbox({ item, onClose }) {
         </button>
 
         <div className="lightbox-media">
-          {item.type === "photo" ? (
-            photoSrc ? (
-              <img src={photoSrc} alt={item.filename} className="lightbox-image" />
-            ) : (
-              <div className="lightbox-loading">
-                <div className="spinner" />
-              </div>
-            )
+          {!mediaSrc ? (
+            <div className="lightbox-loading">
+              <div className="spinner" />
+            </div>
+          ) : item.type === "photo" ? (
+            <img src={mediaSrc} alt={item.filename} className="lightbox-image" />
           ) : (
-            <video
-              src={videoUrl(item.filename)}
-              controls
-              autoPlay
-              className="lightbox-video"
-            />
+            <video src={mediaSrc} controls autoPlay className="lightbox-video" />
           )}
         </div>
 
