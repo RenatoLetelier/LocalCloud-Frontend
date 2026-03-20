@@ -134,6 +134,9 @@ export default function GalleryPage() {
   const fileInputRef = useRef(null);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // Cache keyed by refreshKey so it auto-invalidates after upload/deduplicate
+  const mediaCache = useRef({ key: -1, photos: null, videos: null });
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -141,21 +144,23 @@ export default function GalleryPage() {
 
     const fetchData = async () => {
       try {
-        let fetched = [];
-        if (filter === "all") {
-          const [photosRes, videosRes] = await Promise.all([getPhotos(), getVideos()]);
-          fetched = [
-            ...(photosRes.data.data ?? []),
-            ...(videosRes.data.data ?? []),
-          ];
-        } else if (filter === "photo") {
-          const res = await getPhotos();
-          fetched = res.data.data ?? [];
-        } else {
-          const res = await getVideos();
-          fetched = res.data.data ?? [];
+        // Invalidate cache when refreshKey changes
+        if (mediaCache.current.key !== refreshKey) {
+          mediaCache.current = { key: refreshKey, photos: null, videos: null };
         }
 
+        const needPhotos = filter === "all" || filter === "photo";
+        const needVideos = filter === "all" || filter === "video";
+
+        const fetches = [];
+        if (needPhotos && !mediaCache.current.photos) fetches.push(getPhotos().then((r) => { mediaCache.current.photos = r.data.data ?? []; }));
+        if (needVideos && !mediaCache.current.videos) fetches.push(getVideos().then((r) => { mediaCache.current.videos = r.data.data ?? []; }));
+        await Promise.all(fetches);
+
+        const fetched = [
+          ...(needPhotos ? mediaCache.current.photos : []),
+          ...(needVideos ? mediaCache.current.videos : []),
+        ];
         fetched.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
         if (!cancelled) setItems(fetched);
       } catch (err) {

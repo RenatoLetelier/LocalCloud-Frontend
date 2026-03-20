@@ -6,6 +6,7 @@ import { AuthContext } from "../Contexts.jsx";
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const navigate = useNavigate();
 
   // Leer token/usuario al montar la app
@@ -21,6 +22,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem("user");
       }
     }
+    setIsInitializing(false);
   }, []);
 
   const login = async (userReq) => {
@@ -59,6 +61,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         user,
         isAuthenticated,
+        isInitializing,
       }}
     >
       {children}
