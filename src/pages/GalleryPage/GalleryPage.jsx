@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadMedia, deduplicateMedia } from "../../api/media.js";
+import { getPhotos, getVideos, uploadPhotos, uploadVideo, deduplicateMedia } from "../../api/media.js";
 import api from "../../api/axiosInstance.js";
 import "./GalleryPage.css";
 
@@ -438,14 +438,23 @@ export default function GalleryPage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleUpload = async (e) => {
-    const files = e.target.files;
-    if (!files?.length) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
     setUploadLoading(true);
     setUploadError(null);
     try {
-      const formData = new FormData();
-      Array.from(files).forEach((f) => formData.append("files", f));
-      await uploadMedia(formData);
+      const photos = files.filter((f) => f.type.startsWith("image/"));
+      const videos = files.filter((f) => f.type.startsWith("video/"));
+
+      const uploads = [];
+      if (photos.length) {
+        const formData = new FormData();
+        photos.forEach((f) => formData.append("files", f));
+        uploads.push(uploadPhotos(formData));
+      }
+      videos.forEach((f) => uploads.push(uploadVideo(f)));
+
+      await Promise.all(uploads);
       refresh();
     } catch (err) {
       setUploadError(err.message ?? "Upload failed");
