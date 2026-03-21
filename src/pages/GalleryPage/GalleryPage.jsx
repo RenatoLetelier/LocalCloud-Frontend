@@ -8,6 +8,14 @@ import "./GalleryPage.css";
 // Module-level cache: survives component remounts
 const mediaCache = { key: -1, photos: null, videos: null };
 
+// Resolve API-relative URLs against the configured API base
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
+function resolveUrl(url) {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_BASE}${url}`;
+}
+
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
 function useIsMobile(breakpoint = 768) {
@@ -145,7 +153,7 @@ function PhotoThumb({ item, onClick }) {
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
       {item.url
-        ? <img src={item.url} alt={item.filename} />
+        ? <img src={resolveUrl(item.url)} alt={item.filename} />
         : <div className="thumb-placeholder" />
       }
       <div className="thumb-overlay">
@@ -204,14 +212,14 @@ function Lightbox({ item, items, onClose, onNavigate }) {
   const mediaContent = (extraClassName) =>
     item.type === "photo" ? (
       <img
-        src={item.url}
+        src={resolveUrl(item.url)}
         alt={item.filename}
         className={extraClassName}
         onClick={(e) => e.stopPropagation()}
       />
     ) : (
       <HlsVideo
-        src={item.masterUrl}
+        src={resolveUrl(item.masterUrl)}
         controls
         autoPlay
         playsInline
@@ -446,9 +454,20 @@ export default function GalleryPage() {
     setVideoUploadLoading(true);
     setVideoUploadError(null);
     try {
-      const { data } = await getVideoUploadToken();
-      const { token, uploadUrl } = data;
+      let tokenData;
+      try {
+        const { data } = await getVideoUploadToken();
+        tokenData = data;
+      } catch (err) {
+        const status = err.response?.status;
+        throw new Error(
+          status === 404
+            ? "Upload token endpoint not found (404) — check backend route order: /upload-token must be defined before /:id"
+            : `Failed to get upload token: ${err.message}`
+        );
+      }
 
+      const { token, uploadUrl } = tokenData;
       const formData = new FormData();
       formData.append("file", file);
 
@@ -457,7 +476,7 @@ export default function GalleryPage() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      if (!res.ok) throw new Error(`Direct upload failed (${res.status}) — check Raspberry Pi is reachable at: ${uploadUrl}`);
       refresh();
     } catch (err) {
       setVideoUploadError(err.message ?? "Video upload failed");
