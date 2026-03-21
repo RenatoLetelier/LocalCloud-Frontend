@@ -116,18 +116,23 @@ function formatSize(bytes) {
 
 // ── useAuthBlob ───────────────────────────────────────────────────────────────
 
-function useAuthBlob(filename) {
-  const [src, setSrc] = useState(() => blobUrlCache.get(filename) ?? null);
+function useAuthBlob(item) {
+  const filename = item?.filename;
+  const [src, setSrc] = useState(() => (filename ? (blobUrlCache.get(filename) ?? null) : null));
 
   useEffect(() => {
-    if (!filename) return;
+    if (!item || !filename) return;
     if (blobUrlCache.has(filename)) {
       setSrc(blobUrlCache.get(filename));
       return;
     }
+    const streamUrl = item.type === "photo"
+      ? `/api/photos/${item.id}/stream`
+      : `/api/videos/${item.id}/stream`;
+
     let cancelled = false;
     api
-      .get(`/api/media/file/${filename}`, { responseType: "blob" })
+      .get(streamUrl, { responseType: "blob" })
       .then((res) => {
         const url = URL.createObjectURL(res.data);
         blobUrlCache.set(filename, url);
@@ -136,7 +141,7 @@ function useAuthBlob(filename) {
       .catch(() => {});
 
     return () => { cancelled = true; };
-  }, [filename]);
+  }, [filename, item?.id, item?.type]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return src;
 }
@@ -144,7 +149,7 @@ function useAuthBlob(filename) {
 // ── Thumbnail components ──────────────────────────────────────────────────────
 
 function PhotoThumb({ item, onClick }) {
-  const src = useAuthBlob(item.filename);
+  const src = useAuthBlob(item);
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
       {src ? <img src={src} alt={item.filename} /> : <div className="thumb-placeholder" />}
@@ -156,7 +161,7 @@ function PhotoThumb({ item, onClick }) {
 }
 
 function VideoThumb({ item, onClick }) {
-  const src = useAuthBlob(item.filename);
+  const src = useAuthBlob(item);
   const videoRef = useRef(null);
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
@@ -184,7 +189,7 @@ function VideoThumb({ item, onClick }) {
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ item, items, onClose, onNavigate }) {
-  const mediaSrc = useAuthBlob(item.filename);
+  const mediaSrc = useAuthBlob(item);
   const isMobile = useIsMobile();
   const currentIndex = items.findIndex((i) => i.filename === item.filename);
   const hasPrev = currentIndex > 0;
