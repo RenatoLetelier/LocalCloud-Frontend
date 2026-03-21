@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 import { loginRequest } from "../../api/auth.js";
 import { AuthContext } from "../Contexts.jsx";
 
@@ -28,17 +29,20 @@ export const AuthProvider = ({ children }) => {
   const login = async (userReq) => {
     try {
       const res = await loginRequest(userReq);
-
       if (!res.data.token) throw new Error("Invalid credentials");
-      if (!res.data.user?.id || !res.data.user?.email)
-        throw new Error("Invalid user data");
 
-      setUser(res.data.user);
+      const decoded = jwtDecode(res.data.token);
+      const user = {
+        id:       decoded.sub ?? decoded.id,
+        email:    decoded.email,
+        username: decoded.username ?? decoded.name,
+        role:     decoded.role,
+      };
+
+      setUser(user);
       setIsAuthenticated(true);
-
       localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-
+      localStorage.setItem("user", JSON.stringify(user));
       navigate("/");
     } catch (error) {
       const backendMessage = error.response?.data?.message;
