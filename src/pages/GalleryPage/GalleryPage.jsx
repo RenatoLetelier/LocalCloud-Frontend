@@ -8,12 +8,14 @@ import "./GalleryPage.css";
 // Module-level cache: survives component remounts
 const mediaCache = { key: -1, photos: null, videos: null };
 
-// Resolve API-relative URLs against the configured API base
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
-function resolveUrl(url) {
-  if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  return `${API_BASE}${url}`;
+
+function photoStreamUrl(item) {
+  return `${API_BASE}/api/photos/${item.id}/stream`;
+}
+
+function videoStreamUrl(item) {
+  return `${API_BASE}/api/videos/${item.id}/stream/master.m3u8`;
 }
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -152,10 +154,7 @@ function HlsVideo({ src, className, ...props }) {
 function PhotoThumb({ item, onClick }) {
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
-      {item.url
-        ? <img src={resolveUrl(item.url)} alt={item.filename} />
-        : <div className="thumb-placeholder" />
-      }
+      <img src={photoStreamUrl(item)} alt={item.filename} />
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
       </div>
@@ -212,14 +211,14 @@ function Lightbox({ item, items, onClose, onNavigate }) {
   const mediaContent = (extraClassName) =>
     item.type === "photo" ? (
       <img
-        src={resolveUrl(item.url)}
+        src={photoStreamUrl(item)}
         alt={item.filename}
         className={extraClassName}
         onClick={(e) => e.stopPropagation()}
       />
     ) : (
       <HlsVideo
-        src={resolveUrl(item.masterUrl)}
+        src={videoStreamUrl(item)}
         controls
         autoPlay
         playsInline
