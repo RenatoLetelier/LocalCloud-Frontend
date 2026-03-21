@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotos, uploadVideo, deduplicateMedia } from "../../api/media.js";
-import api from "../../api/axiosInstance.js";
+import { getPhotos, getVideos, uploadPhotos, getVideoUploadToken, deduplicateMedia } from "../../api/media.js";
 import "./GalleryPage.css";
 
 // Module-level cache: survives component remounts
 const mediaCache = { key: -1, photos: null, videos: null };
-const blobUrlCache = new Map(); // filename → object URL
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -114,45 +113,41 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ── useAuthBlob ───────────────────────────────────────────────────────────────
+// ── HLS Video player ──────────────────────────────────────────────────────────
 
-function useAuthBlob(item) {
-  const filename = item?.filename;
-  const [src, setSrc] = useState(() => (filename ? (blobUrlCache.get(filename) ?? null) : null));
+function HlsVideo({ src, className, ...props }) {
+  const videoRef = useRef(null);
 
   useEffect(() => {
-    if (!item || !filename) return;
-    if (blobUrlCache.has(filename)) {
-      setSrc(blobUrlCache.get(filename));
+    const video = videoRef.current;
+    if (!src || !video) return;
+
+    // Safari supports HLS natively
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
       return;
     }
-    const streamUrl = item.type === "photo"
-      ? `/api/photos/${item.id}/stream`
-      : `/api/videos/${item.id}/stream`;
 
-    let cancelled = false;
-    api
-      .get(streamUrl, { responseType: "blob" })
-      .then((res) => {
-        const url = URL.createObjectURL(res.data);
-        blobUrlCache.set(filename, url);
-        if (!cancelled) setSrc(url);
-      })
-      .catch(() => {});
+    if (!Hls.isSupported()) return;
 
-    return () => { cancelled = true; };
-  }, [filename, item?.id, item?.type]); // eslint-disable-line react-hooks/exhaustive-deps
+    const hls = new Hls({ autoStartLoad: true });
+    hls.loadSource(src);
+    hls.attachMedia(video);
+    return () => hls.destroy();
+  }, [src]);
 
-  return src;
+  return <video ref={videoRef} className={className} {...props} />;
 }
 
 // ── Thumbnail components ──────────────────────────────────────────────────────
 
 function PhotoThumb({ item, onClick }) {
-  const src = useAuthBlob(item);
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
-      {src ? <img src={src} alt={item.filename} /> : <div className="thumb-placeholder" />}
+      {item.url
+        ? <img src={item.url} alt={item.filename} />
+        : <div className="thumb-placeholder" />
+      }
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
       </div>
@@ -161,23 +156,9 @@ function PhotoThumb({ item, onClick }) {
 }
 
 function VideoThumb({ item, onClick }) {
-  const src = useAuthBlob(item);
-  const videoRef = useRef(null);
   return (
     <button className="media-thumb" onClick={onClick} title={item.filename}>
-      {src ? (
-        <video
-          ref={videoRef}
-          src={src}
-          className="thumb-video"
-          preload="metadata"
-          muted
-          playsInline
-          onLoadedMetadata={() => { if (videoRef.current) videoRef.current.currentTime = 1; }}
-        />
-      ) : (
-        <div className="thumb-placeholder" />
-      )}
+      <div className="thumb-placeholder thumb-video-bg" />
       <span className="play-badge">▶</span>
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
@@ -189,7 +170,6 @@ function VideoThumb({ item, onClick }) {
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ item, items, onClose, onNavigate }) {
-  const mediaSrc = useAuthBlob(item);
   const isMobile = useIsMobile();
   const currentIndex = items.findIndex((i) => i.filename === item.filename);
   const hasPrev = currentIndex > 0;
@@ -221,6 +201,25 @@ function Lightbox({ item, items, onClose, onNavigate }) {
     if (delta < 0 && hasNext) onNavigate(items[currentIndex + 1]);
   };
 
+  const mediaContent = (extraClassName) =>
+    item.type === "photo" ? (
+      <img
+        src={item.url}
+        alt={item.filename}
+        className={extraClassName}
+        onClick={(e) => e.stopPropagation()}
+      />
+    ) : (
+      <HlsVideo
+        src={item.masterUrl}
+        controls
+        autoPlay
+        playsInline
+        className={extraClassName}
+        onClick={(e) => e.stopPropagation()}
+      />
+    );
+
   if (isMobile) {
     return (
       <div
@@ -231,37 +230,16 @@ function Lightbox({ item, items, onClose, onNavigate }) {
         aria-modal="true"
         aria-label="Media viewer"
       >
-        {/* Mobile top bar: close + counter */}
         <div className="lightbox-mobile-bar">
           <button className="lightbox-mobile-close" onClick={onClose} aria-label="Close">✕</button>
           <span className="lightbox-counter">{currentIndex + 1} / {items.length}</span>
-          <div style={{ width: 40 }} /> {/* spacer to center counter */}
+          <div style={{ width: 40 }} />
         </div>
 
-        {/* Media fills the screen */}
         <div className="lightbox-mobile-media" onClick={onClose}>
-          {!mediaSrc ? (
-            <div className="lightbox-loading"><div className="spinner" /></div>
-          ) : item.type === "photo" ? (
-            <img
-              src={mediaSrc}
-              alt={item.filename}
-              className="lightbox-mobile-img"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <video
-              src={mediaSrc}
-              controls
-              autoPlay
-              playsInline
-              className="lightbox-mobile-video"
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
+          {mediaContent(item.type === "photo" ? "lightbox-mobile-img" : "lightbox-mobile-video")}
         </div>
 
-        {/* Swipe hint dots — shown only if multiple items */}
         {items.length > 1 && (
           <div className="lightbox-mobile-info">
             <span className="lightbox-filename">{item.filename}</span>
@@ -298,13 +276,7 @@ function Lightbox({ item, items, onClose, onNavigate }) {
           <button className="lightbox-close" onClick={onClose} aria-label="Close">✕</button>
 
           <div className="lightbox-media">
-            {!mediaSrc ? (
-              <div className="lightbox-loading"><div className="spinner" /></div>
-            ) : item.type === "photo" ? (
-              <img src={mediaSrc} alt={item.filename} className="lightbox-image" />
-            ) : (
-              <video src={mediaSrc} controls autoPlay className="lightbox-video" />
-            )}
+            {mediaContent(item.type === "photo" ? "lightbox-image" : "lightbox-video")}
           </div>
 
           <div className="lightbox-info">
@@ -344,14 +316,17 @@ export default function GalleryPage() {
   const [selected, setSelected]       = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [uploadError, setUploadError]     = useState(null);
-  const [dedupeLoading, setDedupeLoading] = useState(false);
-  const [dedupeMessage, setDedupeMessage] = useState(null);
+  const [uploadLoading, setUploadLoading]       = useState(false);
+  const [uploadError, setUploadError]           = useState(null);
+  const [videoUploadLoading, setVideoUploadLoading] = useState(false);
+  const [videoUploadError, setVideoUploadError]     = useState(null);
+  const [dedupeLoading, setDedupeLoading]       = useState(false);
+  const [dedupeMessage, setDedupeMessage]       = useState(null);
 
   // ── Desktop pagination ────────────────────────────────────────────────────
-  const mainRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const mainRef      = useRef(null);
+  const photoInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const itemsPerPage = useItemsPerPage(mainRef, !isMobile);
@@ -403,12 +378,22 @@ export default function GalleryPage() {
           mediaCache.key = refreshKey;
           mediaCache.photos = null;
           mediaCache.videos = null;
-          blobUrlCache.clear();
         }
 
         const fetches = [];
-        if (!mediaCache.photos) fetches.push(getPhotos().then((r) => { mediaCache.photos = r.data.data ?? []; }));
-        if (!mediaCache.videos) fetches.push(getVideos().then((r) => { mediaCache.videos = r.data.data ?? []; }));
+        if (!mediaCache.photos) fetches.push(
+          getPhotos().then((r) => { mediaCache.photos = r.data.data ?? []; })
+        );
+        if (!mediaCache.videos) fetches.push(
+          getVideos().then((r) => {
+            // Normalize: add type + map name→filename for consistent handling
+            mediaCache.videos = (r.data.data ?? []).map((v) => ({
+              ...v,
+              type: "video",
+              filename: v.name,
+            }));
+          })
+        );
         await Promise.all(fetches);
 
         const seen = new Set();
@@ -437,29 +422,47 @@ export default function GalleryPage() {
   }, [filter, refreshKey]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleUpload = async (e) => {
+  const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploadLoading(true);
     setUploadError(null);
     try {
-      const photos = files.filter((f) => f.type.startsWith("image/"));
-      const videos = files.filter((f) => f.type.startsWith("video/"));
-
-      const uploads = [];
-      if (photos.length) {
-        const formData = new FormData();
-        photos.forEach((f) => formData.append("files", f));
-        uploads.push(uploadPhotos(formData));
-      }
-      videos.forEach((f) => uploads.push(uploadVideo(f)));
-
-      await Promise.all(uploads);
+      const formData = new FormData();
+      files.forEach((f) => formData.append("files", f));
+      await uploadPhotos(formData);
       refresh();
     } catch (err) {
       setUploadError(err.message ?? "Upload failed");
     } finally {
       setUploadLoading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleVideoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setVideoUploadLoading(true);
+    setVideoUploadError(null);
+    try {
+      const { data } = await getVideoUploadToken();
+      const { token, uploadUrl } = data;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      refresh();
+    } catch (err) {
+      setVideoUploadError(err.message ?? "Video upload failed");
+    } finally {
+      setVideoUploadLoading(false);
       e.target.value = "";
     }
   };
@@ -496,7 +499,7 @@ export default function GalleryPage() {
 
         {/* ── Sidebar / bottom sheet ────────────────────────── */}
         <aside className={`gallery-sidebar${sidebarOpen ? " sidebar-open" : ""}`}>
-          {/* Sheet drag handle + header (mobile only, hidden on desktop via CSS) */}
+          {/* Sheet drag handle + header (mobile only) */}
           <div className="sidebar-sheet-header">
             <div className="sidebar-drag-handle" />
             <div className="sidebar-sheet-title-row">
@@ -535,24 +538,44 @@ export default function GalleryPage() {
             <div className="admin-section">
               <p className="sidebar-title">Admin</p>
 
+              {/* Photo upload */}
               <input
-                ref={fileInputRef}
+                ref={photoInputRef}
                 type="file"
                 multiple
-                accept="image/*,video/*"
+                accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
                 style={{ display: "none" }}
-                onChange={handleUpload}
+                onChange={handlePhotoUpload}
               />
               <button
                 className="admin-btn upload-btn"
-                onClick={() => { fileInputRef.current?.click(); setSidebarOpen(false); }}
+                onClick={() => { photoInputRef.current?.click(); setSidebarOpen(false); }}
                 disabled={uploadLoading}
               >
-                <span>↑</span>
-                {uploadLoading ? "Uploading…" : "Upload"}
+                <span>🖼</span>
+                {uploadLoading ? "Uploading…" : "Upload Photos"}
               </button>
               {uploadError && <p className="admin-msg error">{uploadError}</p>}
 
+              {/* Video upload */}
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept=".zip"
+                style={{ display: "none" }}
+                onChange={handleVideoUpload}
+              />
+              <button
+                className="admin-btn upload-btn"
+                onClick={() => { videoInputRef.current?.click(); setSidebarOpen(false); }}
+                disabled={videoUploadLoading}
+              >
+                <span>🎬</span>
+                {videoUploadLoading ? "Uploading…" : "Upload Video"}
+              </button>
+              {videoUploadError && <p className="admin-msg error">{videoUploadError}</p>}
+
+              {/* Deduplicate */}
               <button
                 className="admin-btn dedupe-btn"
                 onClick={handleDeduplicate}
@@ -602,9 +625,9 @@ export default function GalleryPage() {
               <div className="media-grid">
                 {displayItems.map((item) =>
                   item.type === "photo" ? (
-                    <PhotoThumb key={item.filename} item={item} onClick={() => setSelected(item)} />
+                    <PhotoThumb key={item.id} item={item} onClick={() => setSelected(item)} />
                   ) : (
-                    <VideoThumb key={item.filename} item={item} onClick={() => setSelected(item)} />
+                    <VideoThumb key={item.id} item={item} onClick={() => setSelected(item)} />
                   )
                 )}
               </div>
