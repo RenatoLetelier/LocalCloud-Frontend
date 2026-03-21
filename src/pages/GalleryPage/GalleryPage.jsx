@@ -123,16 +123,25 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ── HLS Video player ──────────────────────────────────────────────────────────
+// ── HLS Video player with quality / audio / subtitle controls ────────────────
 
-function HlsVideo({ src, className, ...props }) {
-  const videoRef = useRef(null);
+function VideoPlayer({ item, videoClassName }) {
+  const videoRef  = useRef(null);
+  const hlsRef    = useRef(null);
+
+  const [levels,         setLevels]         = useState([]);
+  const [currentLevel,   setCurrentLevel]   = useState(-1); // -1 = auto
+  const [audioTracks,    setAudioTracks]    = useState([]);
+  const [currentAudio,   setCurrentAudio]   = useState(0);
+  const [subtitleTracks, setSubtitleTracks] = useState([]);
+  const [currentSub,     setCurrentSub]     = useState(-1); // -1 = off
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!src || !video) return;
+    const src   = videoStreamUrl(item);
+    if (!video) return;
 
-    // Safari supports HLS natively
+    // Safari: native HLS — no level/track API available
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = src;
       return;
@@ -140,13 +149,94 @@ function HlsVideo({ src, className, ...props }) {
 
     if (!Hls.isSupported()) return;
 
-    const hls = new Hls({ autoStartLoad: true });
+    const hls = new Hls();
+    hlsRef.current = hls;
     hls.loadSource(src);
     hls.attachMedia(video);
-    return () => hls.destroy();
-  }, [src]);
 
-  return <video ref={videoRef} className={className} {...props} />;
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      setLevels(hls.levels);
+      setAudioTracks(hls.audioTracks);
+      setSubtitleTracks(hls.subtitleTracks);
+      setCurrentLevel(hls.currentLevel);
+      setCurrentAudio(hls.audioTrack);
+      setCurrentSub(hls.subtitleTrack);
+    });
+
+    return () => { hls.destroy(); hlsRef.current = null; };
+  }, [item]);
+
+  const changeQuality = (level) => {
+    if (hlsRef.current) { hlsRef.current.currentLevel = level; setCurrentLevel(level); }
+  };
+  const changeAudio = (track) => {
+    if (hlsRef.current) { hlsRef.current.audioTrack = track; setCurrentAudio(track); }
+  };
+  const changeSub = (track) => {
+    if (hlsRef.current) { hlsRef.current.subtitleTrack = track; setCurrentSub(track); }
+  };
+
+  const hasControls = levels.length > 1 || audioTracks.length > 1 || subtitleTracks.length > 0;
+
+  return (
+    <div className="video-player-wrap" onClick={(e) => e.stopPropagation()}>
+      <video
+        ref={videoRef}
+        className={videoClassName}
+        controls
+        autoPlay
+        playsInline
+      />
+      {hasControls && (
+        <div className="video-controls-bar">
+          {levels.length > 1 && (
+            <div className="video-control-group">
+              <span className="video-control-label">Quality</span>
+              <select
+                className="video-control-select"
+                value={currentLevel}
+                onChange={(e) => changeQuality(Number(e.target.value))}
+              >
+                <option value={-1}>Auto</option>
+                {levels.map((l, i) => (
+                  <option key={i} value={i}>{l.height ? `${l.height}p` : `Level ${i + 1}`}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {audioTracks.length > 1 && (
+            <div className="video-control-group">
+              <span className="video-control-label">Audio</span>
+              <select
+                className="video-control-select"
+                value={currentAudio}
+                onChange={(e) => changeAudio(Number(e.target.value))}
+              >
+                {audioTracks.map((t, i) => (
+                  <option key={i} value={i}>{t.name || t.lang || `Track ${i + 1}`}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {subtitleTracks.length > 0 && (
+            <div className="video-control-group">
+              <span className="video-control-label">Subtitles</span>
+              <select
+                className="video-control-select"
+                value={currentSub}
+                onChange={(e) => changeSub(Number(e.target.value))}
+              >
+                <option value={-1}>Off</option>
+                {subtitleTracks.map((t, i) => (
+                  <option key={i} value={i}>{t.name || t.lang || `Sub ${i + 1}`}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Thumbnail components ──────────────────────────────────────────────────────
@@ -208,23 +298,16 @@ function Lightbox({ item, items, onClose, onNavigate }) {
     if (delta < 0 && hasNext) onNavigate(items[currentIndex + 1]);
   };
 
-  const mediaContent = (extraClassName) =>
+  const mediaContent = (photoClassName, videoClassName) =>
     item.type === "photo" ? (
       <img
         src={photoStreamUrl(item)}
         alt={item.filename}
-        className={extraClassName}
+        className={photoClassName}
         onClick={(e) => e.stopPropagation()}
       />
     ) : (
-      <HlsVideo
-        src={videoStreamUrl(item)}
-        controls
-        autoPlay
-        playsInline
-        className={extraClassName}
-        onClick={(e) => e.stopPropagation()}
-      />
+      <VideoPlayer item={item} videoClassName={videoClassName} />
     );
 
   if (isMobile) {
@@ -244,7 +327,7 @@ function Lightbox({ item, items, onClose, onNavigate }) {
         </div>
 
         <div className="lightbox-mobile-media" onClick={onClose}>
-          {mediaContent(item.type === "photo" ? "lightbox-mobile-img" : "lightbox-mobile-video")}
+          {mediaContent("lightbox-mobile-img", "lightbox-mobile-video")}
         </div>
 
         {items.length > 1 && (
@@ -283,7 +366,7 @@ function Lightbox({ item, items, onClose, onNavigate }) {
           <button className="lightbox-close" onClick={onClose} aria-label="Close">✕</button>
 
           <div className="lightbox-media">
-            {mediaContent(item.type === "photo" ? "lightbox-image" : "lightbox-video")}
+            {mediaContent("lightbox-image", "lightbox-video")}
           </div>
 
           <div className="lightbox-info">
@@ -585,11 +668,11 @@ export default function GalleryPage() {
               />
               <button
                 className="admin-btn upload-btn"
-                onClick={() => { videoInputRef.current?.click(); setSidebarOpen(false); }}
-                disabled={videoUploadLoading}
+                disabled
+                title="Video upload is temporarily unavailable"
               >
                 <span>🎬</span>
-                {videoUploadLoading ? "Uploading…" : "Upload Video"}
+                Upload Video
               </button>
               {videoUploadError && <p className="admin-msg error">{videoUploadError}</p>}
 
