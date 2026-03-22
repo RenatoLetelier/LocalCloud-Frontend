@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
-import Hls from "hls.js";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotos, getVideoUploadToken, deduplicateMedia, getUserMedia } from "../../api/media.js";
-import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem } from "../../api/albums.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deleteVideo, patchPhoto, patchVideo } from "../../api/media.js";
+import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem, removeAlbumItem } from "../../api/albums.js";
+import { getUsers } from "../../api/users.js";
+import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
 import "./GalleryPage.css";
 
 // Module-level cache: survives component remounts
@@ -11,13 +12,34 @@ const mediaCache = { key: -1, photos: null, videos: null };
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
-function photoStreamUrl(item) {
-  return `${API_BASE}/api/photos/${item.id}/stream`;
+/**
+ * Returns true if a user-media `mediaId` corresponds to a file entry from
+ * the deduplication report.  The media API may use the bare filename, the
+ * filename without extension, or embed the id inside the stream URL, so we
+ * try all three shapes.
+ */
+function mediaIdMatchesDupFile(mediaId, dupFile) {
+  const filename = dupFile.filename ?? "";
+  const url      = dupFile.url      ?? "";
+  const nameNoExt = filename.replace(/\.[^.]+$/, "");
+  return (
+    mediaId === filename  ||
+    mediaId === nameNoExt ||
+    url.includes(`/${mediaId}/`) ||
+    url.includes(`/${mediaId}.`) ||
+    url.endsWith(`/${mediaId}`)
+  );
 }
 
-function videoStreamUrl(item) {
-  return `${API_BASE}/api/videos/${item.id}/stream/master.m3u8`;
+/** Unified stream URL for both photos and videos — uses the new /api/media/file/:filename endpoint */
+function mediaFileUrl(item) {
+  const name = item.filename || item.id;
+  return `${API_BASE}/api/media/file/${encodeURIComponent(name)}`;
 }
+
+// Keep named aliases used throughout the file
+const photoStreamUrl = mediaFileUrl;
+const videoStreamUrl = mediaFileUrl;
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -124,117 +146,22 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ── HLS Video player with quality / audio / subtitle controls ────────────────
+// ── Video player — direct streaming with native Range-request support ─────────
+// The backend now serves raw video files via GET /api/media/file/:filename with
+// proper Content-Range forwarding, so the browser's built-in <video> handles
+// seeking and buffering without a separate HLS layer.
 
 function VideoPlayer({ item, videoClassName }) {
-  const videoRef  = useRef(null);
-  const hlsRef    = useRef(null);
-
-  const [levels,         setLevels]         = useState([]);
-  const [currentLevel,   setCurrentLevel]   = useState(-1);
-  const [audioTracks,    setAudioTracks]    = useState([]);
-  const [currentAudio,   setCurrentAudio]   = useState(0);
-  const [subtitleTracks, setSubtitleTracks] = useState([]);
-  const [currentSub,     setCurrentSub]     = useState(-1);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    const src   = videoStreamUrl(item);
-    if (!video) return;
-
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = src;
-      return;
-    }
-
-    if (!Hls.isSupported()) return;
-
-    const hls = new Hls();
-    hlsRef.current = hls;
-    hls.loadSource(src);
-    hls.attachMedia(video);
-
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      setLevels(hls.levels);
-      setAudioTracks(hls.audioTracks);
-      setSubtitleTracks(hls.subtitleTracks);
-      setCurrentLevel(hls.currentLevel);
-      setCurrentAudio(hls.audioTrack);
-      setCurrentSub(hls.subtitleTrack);
-    });
-
-    return () => { hls.destroy(); hlsRef.current = null; };
-  }, [item]);
-
-  const changeQuality = (level) => {
-    if (hlsRef.current) { hlsRef.current.currentLevel = level; setCurrentLevel(level); }
-  };
-  const changeAudio = (track) => {
-    if (hlsRef.current) { hlsRef.current.audioTrack = track; setCurrentAudio(track); }
-  };
-  const changeSub = (track) => {
-    if (hlsRef.current) { hlsRef.current.subtitleTrack = track; setCurrentSub(track); }
-  };
-
-  const hasControls = levels.length > 1 || audioTracks.length > 1 || subtitleTracks.length > 0;
-
   return (
     <div className="video-player-wrap" onClick={(e) => e.stopPropagation()}>
       <video
-        ref={videoRef}
+        key={item.filename || item.id}   // remount when item changes so src reloads
         className={videoClassName}
+        src={videoStreamUrl(item)}
         controls
         autoPlay
         playsInline
       />
-      {hasControls && (
-        <div className="video-controls-bar">
-          {levels.length > 1 && (
-            <div className="video-control-group">
-              <span className="video-control-label">Quality</span>
-              <select
-                className="video-control-select"
-                value={currentLevel}
-                onChange={(e) => changeQuality(Number(e.target.value))}
-              >
-                <option value={-1}>Auto</option>
-                {levels.map((l, i) => (
-                  <option key={i} value={i}>{l.height ? `${l.height}p` : `Level ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {audioTracks.length > 1 && (
-            <div className="video-control-group">
-              <span className="video-control-label">Audio</span>
-              <select
-                className="video-control-select"
-                value={currentAudio}
-                onChange={(e) => changeAudio(Number(e.target.value))}
-              >
-                {audioTracks.map((t, i) => (
-                  <option key={i} value={i}>{t.name || t.lang || `Track ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {subtitleTracks.length > 0 && (
-            <div className="video-control-group">
-              <span className="video-control-label">Subtitles</span>
-              <select
-                className="video-control-select"
-                value={currentSub}
-                onChange={(e) => changeSub(Number(e.target.value))}
-              >
-                <option value={-1}>Off</option>
-                {subtitleTracks.map((t, i) => (
-                  <option key={i} value={i}>{t.name || t.lang || `Sub ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -260,61 +187,38 @@ const VideoThumb = memo(function VideoThumb({ item, onClick, onContextMenu }) {
     const el = wrapRef.current;
     if (!el) return;
     let cancelled = false;
-    let hlsInst = null;
 
     const io = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting) return;
       io.disconnect();
 
       const vid = document.createElement("video");
-      vid.muted = true;
+      vid.muted       = true;
       vid.playsInline = true;
       vid.crossOrigin = "anonymous";
+      vid.preload     = "metadata";
+      vid.src         = videoStreamUrl(item);
 
       const captureFrame = () => {
         if (cancelled) return;
         try {
-          const c = document.createElement("canvas");
+          const c  = document.createElement("canvas");
           c.width  = vid.videoWidth  || 320;
           c.height = vid.videoHeight || 180;
           c.getContext("2d").drawImage(vid, 0, 0, c.width, c.height);
           if (!cancelled) setThumbSrc(c.toDataURL("image/jpeg", 0.7));
         } catch (_) { /* tainted canvas — keep placeholder */ }
-        hlsInst?.destroy();
-        hlsInst = null;
       };
 
-      vid.addEventListener("seeked", captureFrame, { once: true });
-
-      const src = videoStreamUrl(item);
-
-      if (vid.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari — native HLS
-        vid.src = src;
-        vid.addEventListener("loadedmetadata", () => {
-          vid.currentTime = Math.min(1, vid.duration || 1);
-        }, { once: true });
-      } else if (Hls.isSupported()) {
-        hlsInst = new Hls({ maxBufferLength: 10 });
-        hlsInst.loadSource(src);
-        hlsInst.attachMedia(vid);
-        // Wait for first video fragment to be buffered before seeking
-        let grabbed = false;
-        hlsInst.on(Hls.Events.FRAG_BUFFERED, (_, data) => {
-          if (grabbed || data.frag.type !== "main") return;
-          grabbed = true;
-          vid.currentTime = 0.001;
-        });
-      }
+      vid.addEventListener("seeked",           captureFrame,   { once: true });
+      vid.addEventListener("loadedmetadata", () => {
+        vid.currentTime = Math.min(1, vid.duration || 1);
+      }, { once: true });
     }, { rootMargin: "400px 0px" });
 
     io.observe(el);
 
-    return () => {
-      cancelled = true;
-      io.disconnect();
-      hlsInst?.destroy();
-    };
+    return () => { cancelled = true; io.disconnect(); };
   }, [item]);
 
   return (
@@ -331,9 +235,221 @@ const VideoThumb = memo(function VideoThumb({ item, onClick, onContextMenu }) {
   );
 });
 
+// ── MetaPanel — shows / edits media metadata inside the lightbox ─────────────
+
+function MetaPanel({ item, isAdmin, onSave }) {
+  const [editing,   setEditing]   = useState(false);
+  const [saving,    setSaving]    = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const blankForm = (it) => ({
+    name:          it.name         ?? it.filename ?? "",
+    description:   it.description  ?? "",
+    tags:          (it.tags        ?? []).join(", "),
+    visibility:    it.visibility   ?? "private",
+    lat:           it.metadata?.location?.lat   ?? "",
+    lng:           it.metadata?.location?.lng   ?? "",
+    locationLabel: it.metadata?.location?.label ?? "",
+    people:        (it.metadata?.people ?? []).join(", "),
+  });
+
+  const [form, setForm] = useState(() => blankForm(item));
+
+  // Sync when navigating to a different item
+  useEffect(() => {
+    setForm(blankForm(item));
+    setEditing(false);
+    setSaveError(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.filename]);
+
+  const patch = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const tags   = form.tags  .split(",").map((t) => t.trim()).filter(Boolean);
+      const people = form.people.split(",").map((p) => p.trim()).filter(Boolean);
+
+      const hasLocation = form.lat !== "" || form.lng !== "" || form.locationLabel !== "";
+      const data = {
+        name:        form.name        || undefined,
+        description: form.description || undefined,
+        tags,
+        visibility:  form.visibility,
+        metadata: {
+          ...(hasLocation ? {
+            location: {
+              ...(form.lat           !== "" && { lat:   parseFloat(form.lat) }),
+              ...(form.lng           !== "" && { lng:   parseFloat(form.lng) }),
+              ...(form.locationLabel !== "" && { label: form.locationLabel }),
+            },
+          } : {}),
+          people,
+        },
+      };
+      await onSave(item, data);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err.message ?? "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const Row = ({ label, value }) => (
+    <div className="meta-row">
+      <span className="meta-label">{label}</span>
+      <span className="meta-value">{value || <em className="meta-empty">—</em>}</span>
+    </div>
+  );
+
+  const locationDisplay =
+    item.metadata?.location?.label ||
+    (item.metadata?.location?.lat != null
+      ? `${item.metadata.location.lat}, ${item.metadata.location.lng}`
+      : null);
+
+  if (!editing) {
+    return (
+      <div className="meta-panel">
+        <Row label="Name"        value={item.name ?? item.filename} />
+        <Row label="Description" value={item.description} />
+        <Row label="Tags"        value={item.tags?.join(", ")} />
+        <Row label="Visibility"  value={item.visibility} />
+        <Row label="Location"    value={locationDisplay} />
+        <Row label="People"      value={item.metadata?.people?.join(", ")} />
+        {item.metadata?.width  && <Row label="Dimensions" value={`${item.metadata.width} × ${item.metadata.height}`} />}
+        {item.metadata?.size   && <Row label="Size"       value={formatSize(item.metadata.size)} />}
+        {item.metadata?.type   && <Row label="Type"       value={item.metadata.type} />}
+        {isAdmin && (
+          <button className="meta-edit-btn" onClick={() => setEditing(true)}>✏ Edit metadata</button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="meta-panel meta-panel--editing">
+      <div className="meta-field">
+        <label className="meta-field-label">Name</label>
+        <input className="meta-input" value={form.name} onChange={patch("name")} />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Description</label>
+        <textarea className="meta-input meta-textarea" rows={3} value={form.description} onChange={patch("description")} />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Tags <span className="meta-hint">(comma separated)</span></label>
+        <input className="meta-input" value={form.tags} onChange={patch("tags")} placeholder="nature, beach, night" />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Visibility</label>
+        <select className="meta-input meta-select" value={form.visibility} onChange={patch("visibility")}>
+          <option value="private">Private</option>
+          <option value="public">Public</option>
+        </select>
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Location</label>
+        <div className="meta-field-row">
+          <input className="meta-input" placeholder="Lat"  type="number" step="any" value={form.lat} onChange={patch("lat")} />
+          <input className="meta-input" placeholder="Lng"  type="number" step="any" value={form.lng} onChange={patch("lng")} />
+        </div>
+        <input className="meta-input" placeholder="Label (e.g. Paris, France)" value={form.locationLabel} onChange={patch("locationLabel")} />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">People <span className="meta-hint">(comma separated)</span></label>
+        <input className="meta-input" value={form.people} onChange={patch("people")} placeholder="Alice, Bob" />
+      </div>
+      {saveError && <p className="meta-error">{saveError}</p>}
+      <div className="meta-edit-actions">
+        <button className="meta-save-btn"   onClick={handleSave}           disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+        <button className="meta-cancel-btn" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Assign-to-user modal (admin only) ────────────────────────────────────────
+
+function AssignToUserModal({ item, onClose, onConfirm }) {
+  const [users,          setUsers]          = useState([]);
+  const [loadingUsers,   setLoadingUsers]   = useState(true);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [error,          setError]          = useState(null);
+  const [busy,           setBusy]           = useState(false);
+
+  useEffect(() => {
+    getUsers()
+      .then((r) => setUsers(r.data.data ?? []))
+      .catch(() => setError("Failed to load users."))
+      .finally(() => setLoadingUsers(false));
+  }, []);
+
+  const handleConfirm = async () => {
+    if (!selectedUserId) return;
+    setBusy(true);
+    try {
+      await onConfirm(selectedUserId);
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Assignment failed.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Assign to user</h3>
+          <button className="modal-close-btn" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <p className="modal-subtitle" title={item.filename}>{item.filename}</p>
+
+        {loadingUsers && <p className="modal-loading">Loading users…</p>}
+        {error && <p className="modal-error">{error}</p>}
+
+        {!loadingUsers && !error && (
+          <select
+            className="modal-select"
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+          >
+            <option value="">Select a user…</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.username} — {u.email}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-cancel" onClick={onClose}>Cancel</button>
+          <button
+            className="modal-btn modal-btn-confirm"
+            disabled={!selectedUserId || busy}
+            onClick={handleConfirm}
+          >
+            {busy ? "Assigning…" : "Assign"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
-function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, onCreateAndAdd }) {
+function ContextMenu({
+  x, y, item, albums, userMediaMap, onClose, onAddToAlbum, onCreateAndAdd,
+  selectedAlbumId, isAdmin,
+  onRemoveFromAlbum, onRemoveFromLibrary, onDeletePermanently, onAssignToUser,
+}) {
   const userMedia = userMediaMap[item.id];
 
   return (
@@ -344,6 +460,7 @@ function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, 
     >
       {userMedia ? (
         <>
+          {/* ── Add to album ── */}
           <p className="context-menu-header">Add to album</p>
           {albums.map((album) => (
             <button
@@ -361,9 +478,66 @@ function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, 
           >
             + New album
           </button>
+
+          {/* ── Destructive actions ── */}
+          <div className="context-menu-divider" />
+          {selectedAlbumId && (
+            <button
+              className="context-menu-item context-menu-danger"
+              onClick={() => { onRemoveFromAlbum(item, userMedia); onClose(); }}
+            >
+              📤 Remove from album
+            </button>
+          )}
+          <button
+            className="context-menu-item context-menu-danger"
+            onClick={() => { onRemoveFromLibrary(item, userMedia); onClose(); }}
+          >
+            🗑 Remove from library
+          </button>
+          {isAdmin && (
+            <button
+              className="context-menu-item context-menu-danger"
+              onClick={() => { onDeletePermanently(item); onClose(); }}
+            >
+              ⚠ Delete permanently
+            </button>
+          )}
+
+          {/* ── Admin: assign ── */}
+          {isAdmin && (
+            <>
+              <div className="context-menu-divider" />
+              <button
+                className="context-menu-item"
+                onClick={() => { onAssignToUser(item); onClose(); }}
+              >
+                👤 Assign to user
+              </button>
+            </>
+          )}
         </>
       ) : (
-        <p className="context-menu-empty">Not in your library</p>
+        <>
+          <p className="context-menu-empty">Not in your library</p>
+          {isAdmin && (
+            <>
+              <div className="context-menu-divider" />
+              <button
+                className="context-menu-item context-menu-danger"
+                onClick={() => { onDeletePermanently(item); onClose(); }}
+              >
+                ⚠ Delete permanently
+              </button>
+              <button
+                className="context-menu-item"
+                onClick={() => { onAssignToUser(item); onClose(); }}
+              >
+                👤 Assign to user
+              </button>
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -371,12 +545,58 @@ function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, 
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
-function Lightbox({ item, items, onClose, onNavigate }) {
-  const isMobile = useIsMobile();
+function Lightbox({
+  item, items, onClose, onNavigate,
+  userMediaMap, selectedAlbumId, isAdmin,
+  onRemoveFromAlbum, onRemoveFromLibrary, onDeletePermanently, onAssignToUser,
+  onSaveMeta,
+}) {
+  const isMobile     = useIsMobile();
   const currentIndex = items.findIndex((i) => i.filename === item.filename);
-  const hasPrev = currentIndex > 0;
-  const hasNext = currentIndex < items.length - 1;
-  const touchStartX = useRef(null);
+  const hasPrev      = currentIndex > 0;
+  const hasNext      = currentIndex < items.length - 1;
+  const touchStartX  = useRef(null);
+  const [showMeta,   setShowMeta] = useState(false);
+
+  // Lookup this item's user-media record (determines which actions are available)
+  const userMedia = userMediaMap?.[item.id] ?? null;
+
+  // Shared action bar rendered inside both desktop and mobile lightbox
+  const actionBar = (
+    <div className="lb-actions">
+      <button
+        className={`lb-btn${showMeta ? " lb-btn-active" : ""}`}
+        onClick={() => setShowMeta((v) => !v)}
+        title="Toggle metadata panel"
+      >
+        ℹ Details
+      </button>
+      {userMedia && selectedAlbumId && (
+        <button className="lb-btn lb-btn-danger"
+          onClick={() => { onRemoveFromAlbum(item, userMedia); onClose(); }}>
+          📤 Remove from album
+        </button>
+      )}
+      {userMedia && (
+        <button className="lb-btn lb-btn-danger"
+          onClick={() => { onRemoveFromLibrary(item, userMedia); onClose(); }}>
+          🗑 Remove from library
+        </button>
+      )}
+      {isAdmin && (
+        <button className="lb-btn lb-btn-danger"
+          onClick={() => { onDeletePermanently(item); onClose(); }}>
+          ⚠ Delete permanently
+        </button>
+      )}
+      {isAdmin && (
+        <button className="lb-btn"
+          onClick={() => onAssignToUser(item)}>
+          👤 Assign to user
+        </button>
+      )}
+    </div>
+  );
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -435,12 +655,16 @@ function Lightbox({ item, items, onClose, onNavigate }) {
           {mediaContent("lightbox-mobile-img", "lightbox-mobile-video")}
         </div>
 
-        {items.length > 1 && (
-          <div className="lightbox-mobile-info">
-            <span className="lightbox-filename">{item.filename}</span>
-            <span className="lightbox-meta">
-              {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
-            </span>
+        <div className="lightbox-mobile-info">
+          <span className="lightbox-filename">{item.filename}</span>
+          <span className="lightbox-meta">
+            {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
+          </span>
+        </div>
+        {actionBar}
+        {showMeta && (
+          <div className="lightbox-meta-panel" onClick={(e) => e.stopPropagation()}>
+            <MetaPanel item={item} isAdmin={isAdmin} onSave={onSaveMeta} />
           </div>
         )}
       </div>
@@ -466,11 +690,18 @@ function Lightbox({ item, items, onClose, onNavigate }) {
           )}
         </div>
 
-        <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+        <div className={`lightbox-content${showMeta ? " lightbox-content--with-meta" : ""}`} onClick={(e) => e.stopPropagation()}>
           <button className="lightbox-close" onClick={onClose} aria-label="Close">✕</button>
 
-          <div className="lightbox-media">
-            {mediaContent("lightbox-image", "lightbox-video")}
+          <div className="lightbox-body">
+            <div className="lightbox-media">
+              {mediaContent("lightbox-image", "lightbox-video")}
+            </div>
+            {showMeta && (
+              <div className="lightbox-meta-panel">
+                <MetaPanel item={item} isAdmin={isAdmin} onSave={onSaveMeta} />
+              </div>
+            )}
           </div>
 
           <div className="lightbox-info">
@@ -479,6 +710,7 @@ function Lightbox({ item, items, onClose, onNavigate }) {
               {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
             </span>
           </div>
+          {actionBar}
         </div>
 
         <div className="lightbox-nav-slot">
@@ -511,8 +743,7 @@ export default function GalleryPage() {
   const [selected, setSelected]       = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [uploadLoading, setUploadLoading]           = useState(false);
-  const [uploadError, setUploadError]               = useState(null);
+  const [uploadQueue, setUploadQueue]               = useState([]); // per-file progress queue
   const [videoUploadLoading, setVideoUploadLoading] = useState(false);
   const [videoUploadError, setVideoUploadError]     = useState(null);
   const [dedupeLoading, setDedupeLoading]           = useState(false);
@@ -537,6 +768,9 @@ export default function GalleryPage() {
   const [renameValue, setRenameValue]         = useState("");
   const [albumActionError, setAlbumActionError] = useState(null);
   const [pendingAlbumItem, setPendingAlbumItem] = useState(null); // item to add after album creation
+
+  // ── Assign-to-user modal ──────────────────────────────────────────────────
+  const [assignTarget, setAssignTarget] = useState(null); // item being assigned to another user
 
   // ── Sidebar resize ────────────────────────────────────────────────────────
   const [sidebarWidth, setSidebarWidth] = useState(200);
@@ -815,24 +1049,159 @@ export default function GalleryPage() {
     setSidebarOpen(true);
   }, []);
 
-  // ── Existing upload handlers ──────────────────────────────────────────────
-  const handlePhotoUpload = async (e) => {
-    const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    setUploadLoading(true);
-    setUploadError(null);
+  // ── Media action handlers ─────────────────────────────────────────────────
+
+  /** Remove item from the currently viewed album (user-scoped; file stays on server). */
+  const handleRemoveFromAlbum = useCallback(async (item, userMedia) => {
+    if (!selectedAlbumId) return;
     try {
-      const formData = new FormData();
-      files.forEach((f) => formData.append("files", f));
-      await uploadPhotos(formData);
+      await removeAlbumItem(selectedAlbumId, userMedia.id);
+      // Update local album cache immediately so the grid reacts without a round-trip
+      albumItemsCache.current[selectedAlbumId]?.delete(item.id);
+      setSelectedAlbumMediaIds((prev) => {
+        if (!prev) return prev;
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+      setSelected(null);
+      await refreshAlbums();
+    } catch (err) {
+      console.error("Remove from album failed:", err);
+    }
+  }, [selectedAlbumId, refreshAlbums]);
+
+  /** Remove item from this user's library (deletes user-media record; file stays on server). */
+  const handleRemoveFromLibrary = useCallback(async (item, userMedia) => {
+    if (!window.confirm(`Remove "${item.filename}" from your library?`)) return;
+    try {
+      await deleteUserMedia(userMedia.id);
+      setSelected(null);
       refresh();
     } catch (err) {
-      setUploadError(err.message ?? "Upload failed");
-    } finally {
-      setUploadLoading(false);
-      e.target.value = "";
+      console.error("Remove from library failed:", err);
     }
-  };
+  }, [refresh]);
+
+  /** Admin only: permanently delete the media file from the server. */
+  const handleDeletePermanently = useCallback(async (item) => {
+    const name = item.filename || item.id;
+    if (!window.confirm(
+      `Permanently delete "${name}" from the server?\n\nThis removes the file for ALL users and cannot be undone.`
+    )) return;
+    try {
+      if (item.type === "photo") await deletePhoto(name);
+      else                       await deleteVideo(name);
+      setSelected(null);
+      refresh();
+    } catch (err) {
+      console.error("Permanent delete failed:", err);
+    }
+  }, [refresh]);
+
+  /** Admin only: open the assign-to-user modal. */
+  const handleAssignToUser = useCallback((item) => {
+    setAssignTarget(item);
+  }, []);
+
+  /** Called when the admin confirms a user in the assign modal. */
+  const handleAssignConfirm = useCallback(async (userId) => {
+    if (!assignTarget) return;
+    await createUserMedia({ userId, mediaId: assignTarget.id, mediaType: assignTarget.type });
+    setAssignTarget(null);
+  }, [assignTarget]);
+
+  /** Save updated metadata for a photo or video. */
+  const handleSaveMeta = useCallback(async (item, data) => {
+    if (item.type === "photo") {
+      await patchPhoto(item.filename, data);
+    } else {
+      await patchVideo({ filename: item.filename, ...data });
+    }
+    // Optimistically update the local items list so the lightbox reflects the new values
+    setItems((prev) =>
+      prev.map((i) => i.filename === item.filename ? { ...i, ...data } : i)
+    );
+    // Bust the module-level cache so a manual refresh pulls fresh data
+    mediaCache.key = -1;
+  }, []);
+
+  // ── Upload handlers ───────────────────────────────────────────────────────
+  const clearUploadQueue = useCallback(() => {
+    setUploadQueue((prev) => {
+      // Revoke any object URLs we created for thumbnails
+      prev.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
+      return [];
+    });
+  }, []);
+
+  const handlePhotoUpload = useCallback(async (e) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    e.target.value = ""; // reset input so re-selecting the same files works
+
+    // Build the initial queue (all "queued", with image previews where possible)
+    const queue = files.map((file) => ({
+      id:       `${Date.now()}-${Math.random()}`,
+      file,
+      preview:  file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+      progress: 0,
+      status:   "queued",
+      error:    null,
+    }));
+    setUploadQueue(queue);
+
+    // Upload up to 3 files in parallel.
+    // Each "chain" calls uploadNext() recursively, grabbing the next
+    // unstarted file via the shared `idx` counter (safe: JS is single-threaded).
+    let idx = 0;
+    const uploadNext = async () => {
+      if (idx >= queue.length) return;
+      const item = queue[idx++];
+
+      setUploadQueue((prev) =>
+        prev.map((q) => q.id === item.id ? { ...q, status: "uploading" } : q)
+      );
+
+      try {
+        // Step 1 — upload the file; response contains the new mediaId
+        const res = await uploadPhotoFile(item.file, (pct) =>
+          setUploadQueue((prev) =>
+            prev.map((q) => q.id === item.id ? { ...q, progress: pct } : q)
+          )
+        );
+
+        // Step 2 — auto-assign the uploaded photo to the uploader.
+        // The media API may return the id at different paths; try the most common ones.
+        const data   = res.data ?? {};
+        const mediaId =
+          data.files?.[0]?.id ??  // { files: [{ id }] }
+          data.file?.id       ??  // { file: { id } }
+          data[0]?.id         ??  // [{ id }]
+          data.id;                // { id }
+
+        if (mediaId && user?.id) {
+          await createUserMedia({ userId: user.id, mediaId, mediaType: "photo" });
+        }
+
+        setUploadQueue((prev) =>
+          prev.map((q) => q.id === item.id ? { ...q, status: "done", progress: 100 } : q)
+        );
+      } catch (err) {
+        setUploadQueue((prev) =>
+          prev.map((q) =>
+            q.id === item.id ? { ...q, status: "error", error: err.message ?? "Failed" } : q
+          )
+        );
+      }
+
+      await uploadNext(); // pick up the next queued file in this chain
+    };
+
+    const CONCURRENCY = 3;
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, uploadNext));
+    refresh();
+  }, [refresh, user]);
 
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -874,15 +1243,65 @@ export default function GalleryPage() {
 
   const handleDeduplicate = async () => {
     setSidebarOpen(false);
-    if (!window.confirm("Remove all duplicate files? This cannot be undone.")) return;
+    if (!window.confirm(
+      "Scan your library for duplicates and remove extras?\n\n" +
+      "Only duplicate entries in YOUR library are removed. " +
+      "Actual files are never deleted from the server, so other users are unaffected."
+    )) return;
+
     setDedupeLoading(true);
     setDedupeMessage(null);
+
     try {
-      const res = await deduplicateMedia();
-      setDedupeMessage(res.data?.message ?? "Done");
-      refresh();
+      // 1. Hash-scan the media server — returns groups of files with identical SHA-256
+      const dedupeRes = await deduplicateMedia();
+      const dupGroups = dedupeRes.data?.duplicates ?? [];
+
+      // 2. Fetch only THIS user's media assignments
+      const umRes = await getUserMedia();
+      const myRecords = umRes.data ?? [];
+
+      // Track which record ids we will delete (use a Set to avoid double-deletes)
+      const toDelete = new Set();
+
+      // ── Pass A: same mediaId assigned to this user more than once (DB duplicate) ──
+      const byMediaId = {};
+      for (const rec of myRecords) {
+        (byMediaId[rec.mediaId] ??= []).push(rec);
+      }
+      for (const recs of Object.values(byMediaId)) {
+        if (recs.length < 2) continue;
+        // Keep the oldest assignment, mark the rest for removal
+        const sorted = [...recs].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const rec of sorted.slice(1)) toDelete.add(rec.id);
+      }
+
+      // ── Pass B: different mediaIds but same file content (hash duplicate) ──
+      for (const group of dupGroups) {
+        const files = group.files ?? [];
+        // Which of this user's records map to files in this hash-group?
+        const matches = myRecords.filter(
+          (rec) => files.some((f) => mediaIdMatchesDupFile(rec.mediaId, f))
+        );
+        if (matches.length < 2) continue;
+        // Keep the oldest, mark the rest for removal
+        const sorted = [...matches].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const rec of sorted.slice(1)) toDelete.add(rec.id);
+      }
+
+      // ── Delete the duplicate user-media records (never touches actual files) ──
+      await Promise.all([...toDelete].map((id) => deleteUserMedia(id).catch(() => {})));
+
+      if (toDelete.size === 0) {
+        setDedupeMessage("No duplicates found in your library.");
+      } else {
+        setDedupeMessage(
+          `Removed ${toDelete.size} duplicate ${toDelete.size === 1 ? "entry" : "entries"} from your library.`
+        );
+        refresh();
+      }
     } catch (err) {
-      setDedupeMessage(err.message ?? "Failed");
+      setDedupeMessage(err.message ?? "Deduplication failed");
     } finally {
       setDedupeLoading(false);
     }
@@ -949,10 +1368,35 @@ export default function GalleryPage() {
           </nav>
 
           {!loading && !error && (
-            <p className="sidebar-count">
-              {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
-            </p>
+            <div className="sidebar-count-row">
+              <p className="sidebar-count">
+                {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
+              </p>
+              <button
+                className="sidebar-refresh-btn"
+                onClick={refresh}
+                title="Refresh media"
+                aria-label="Refresh media"
+              >↻</button>
+            </div>
           )}
+
+          {/* Upload button — visible to every user */}
+          <input
+            ref={photoInputRef}
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
+            style={{ display: "none" }}
+            onChange={handlePhotoUpload}
+          />
+          <button
+            className="sidebar-btn upload-photos-btn"
+            onClick={() => { photoInputRef.current?.click(); setSidebarOpen(false); }}
+          >
+            <span className="sidebar-btn-icon">⬆</span>
+            Upload Photos
+          </button>
 
           {/* Albums section */}
           <div className="albums-section">
@@ -1052,23 +1496,6 @@ export default function GalleryPage() {
             <div className="admin-section">
               <p className="sidebar-title">Admin</p>
 
-              <input
-                ref={photoInputRef}
-                type="file"
-                multiple
-                accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
-                style={{ display: "none" }}
-                onChange={handlePhotoUpload}
-              />
-              <button
-                className="admin-btn upload-btn"
-                onClick={() => { photoInputRef.current?.click(); setSidebarOpen(false); }}
-                disabled={uploadLoading}
-              >
-                <span>🖼</span>
-                {uploadLoading ? "Uploading…" : "Upload Photos"}
-              </button>
-              {uploadError && <p className="admin-msg error">{uploadError}</p>}
 
               <input
                 ref={videoInputRef}
@@ -1120,6 +1547,18 @@ export default function GalleryPage() {
                 : activeFilter?.label}
               <span className="mobile-filter-chevron">↑</span>
             </button>
+            <button
+              className="mobile-upload-btn"
+              onClick={() => photoInputRef.current?.click()}
+              title="Upload photos"
+              aria-label="Upload photos"
+            >⬆</button>
+            <button
+              className="mobile-upload-btn"
+              onClick={refresh}
+              title="Refresh media"
+              aria-label="Refresh media"
+            >↻</button>
           </div>
 
           {loading && (
@@ -1189,6 +1628,14 @@ export default function GalleryPage() {
           items={filteredItems}
           onClose={() => setSelected(null)}
           onNavigate={handleLightboxNavigate}
+          userMediaMap={userMediaMap}
+          selectedAlbumId={selectedAlbumId}
+          isAdmin={isAdmin}
+          onRemoveFromAlbum={handleRemoveFromAlbum}
+          onRemoveFromLibrary={handleRemoveFromLibrary}
+          onDeletePermanently={handleDeletePermanently}
+          onAssignToUser={handleAssignToUser}
+          onSaveMeta={handleSaveMeta}
         />
       )}
 
@@ -1202,8 +1649,26 @@ export default function GalleryPage() {
           onClose={() => setContextMenu(null)}
           onAddToAlbum={handleAddToAlbum}
           onCreateAndAdd={handleCreateAndAdd}
+          selectedAlbumId={selectedAlbumId}
+          isAdmin={isAdmin}
+          onRemoveFromAlbum={handleRemoveFromAlbum}
+          onRemoveFromLibrary={handleRemoveFromLibrary}
+          onDeletePermanently={handleDeletePermanently}
+          onAssignToUser={handleAssignToUser}
         />
       )}
+
+      {/* Admin: assign media to another user */}
+      {assignTarget && (
+        <AssignToUserModal
+          item={assignTarget}
+          onClose={() => setAssignTarget(null)}
+          onConfirm={handleAssignConfirm}
+        />
+      )}
+
+      {/* Per-file upload progress panel */}
+      <UploadQueue queue={uploadQueue} onDismiss={clearUploadQueue} />
     </div>
   );
 }
