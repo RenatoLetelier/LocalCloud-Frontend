@@ -5,31 +5,31 @@
   flex: 1;
   padding: 24px;
   position: relative;
+  background: var(--bg);
 }
 
 .theme-button-container {
   position: absolute;
-  top: 0;
-  right: 0;
-  padding: 1rem;
+  top: 12px;
+  right: 12px;
 }
 
 .login-card {
   display: flex;
   flex-direction: column;
   gap: 28px;
-  width: min(480px, 100%);
-  padding: 48px 44px;
+  width: min(420px, 100%);
+  padding: 44px 40px;
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 2);
-  box-shadow: 0 8px 32px hsl(0 0% 0% / 0.12);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-3);
 }
 
 .login-title {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--text-1);
   text-align: center;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }

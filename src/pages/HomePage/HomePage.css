@@ -1,3 +1,9 @@
+.home-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 .home-main {
   display: flex;
   align-items: center;
@@ -11,4 +17,15 @@
   grid-template-columns: repeat(auto-fill, minmax(160px, 200px));
   gap: 16px;
   justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .home-main {
+    padding: 24px 16px;
+  }
+
+  .home-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
 }

@@ -1,4 +1,4 @@
-export default function ProfileIcon({ size = 28, color = "currentColor" }) {
+export default function MoonIcon({ size = 28, color = "currentColor" }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
