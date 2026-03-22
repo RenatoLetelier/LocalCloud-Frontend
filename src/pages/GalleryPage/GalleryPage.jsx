@@ -253,9 +253,76 @@ function PhotoThumb({ item, onClick, onContextMenu }) {
 }
 
 function VideoThumb({ item, onClick, onContextMenu }) {
+  const wrapRef = useRef(null);
+  const [thumbSrc, setThumbSrc] = useState(null);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    let cancelled = false;
+    let hlsInst = null;
+
+    const io = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      io.disconnect();
+
+      const vid = document.createElement("video");
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.crossOrigin = "anonymous";
+
+      const captureFrame = () => {
+        if (cancelled) return;
+        try {
+          const c = document.createElement("canvas");
+          c.width  = vid.videoWidth  || 320;
+          c.height = vid.videoHeight || 180;
+          c.getContext("2d").drawImage(vid, 0, 0, c.width, c.height);
+          if (!cancelled) setThumbSrc(c.toDataURL("image/jpeg", 0.7));
+        } catch (_) { /* tainted canvas — keep placeholder */ }
+        hlsInst?.destroy();
+        hlsInst = null;
+      };
+
+      vid.addEventListener("seeked", captureFrame, { once: true });
+
+      const src = videoStreamUrl(item);
+
+      if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari — native HLS
+        vid.src = src;
+        vid.addEventListener("loadedmetadata", () => {
+          vid.currentTime = Math.min(1, vid.duration || 1);
+        }, { once: true });
+      } else if (Hls.isSupported()) {
+        hlsInst = new Hls({ maxBufferLength: 10 });
+        hlsInst.loadSource(src);
+        hlsInst.attachMedia(vid);
+        // Wait for first video fragment to be buffered before seeking
+        let grabbed = false;
+        hlsInst.on(Hls.Events.FRAG_BUFFERED, (_, data) => {
+          if (grabbed || data.frag.type !== "main") return;
+          grabbed = true;
+          vid.currentTime = 0.001;
+        });
+      }
+    }, { rootMargin: "400px 0px" });
+
+    io.observe(el);
+
+    return () => {
+      cancelled = true;
+      io.disconnect();
+      hlsInst?.destroy();
+    };
+  }, [item]);
+
   return (
-    <button className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
-      <div className="thumb-placeholder thumb-video-bg" />
+    <button ref={wrapRef} className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
+      {thumbSrc
+        ? <img src={thumbSrc} alt={item.filename} className="video-thumb-preview" />
+        : <div className="thumb-placeholder thumb-video-bg" />
+      }
       <span className="play-badge">▶</span>
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
@@ -457,6 +524,7 @@ export default function GalleryPage() {
   const [selectedAlbumId, setSelectedAlbumId]     = useState(null);
   const [selectedAlbumMediaIds, setSelectedAlbumMediaIds] = useState(null); // Set<mediaId> | null
   const [userMediaMap, setUserMediaMap]           = useState({}); // mediaId → userMedia record
+  const [userMediaLoaded, setUserMediaLoaded]     = useState(false);
   const [adminViewAll, setAdminViewAll]           = useState(true);
 
   // ── Context menu state ────────────────────────────────────────────────────
@@ -483,17 +551,20 @@ export default function GalleryPage() {
   const itemsPerPage = useItemsPerPage(mainRef, !isMobile);
   const [currentPage, setCurrentPage] = useState(0);
 
-  // Apply album + admin view filters on top of type-filtered items
+  // Apply album + admin view filters on top of type-filtered items.
+  // Non-admins always see only their own media (filtered by userMediaMap once loaded).
+  // Admins see all by default; toggling to "Mine" applies the same filter.
   const filteredItems = useMemo(() => {
     let result = items;
-    if (isAdmin && !adminViewAll) {
+    const applyUserFilter = userMediaLoaded && (!isAdmin || !adminViewAll);
+    if (applyUserFilter) {
       result = result.filter((i) => userMediaMap[i.id]);
     }
     if (selectedAlbumMediaIds) {
       result = result.filter((i) => selectedAlbumMediaIds.has(i.id));
     }
     return result;
-  }, [items, isAdmin, adminViewAll, userMediaMap, selectedAlbumMediaIds]);
+  }, [items, isAdmin, adminViewAll, userMediaMap, userMediaLoaded, selectedAlbumMediaIds]);
 
   useEffect(() => { setCurrentPage(0); }, [filter, refreshKey, selectedAlbumId, adminViewAll]);
 
@@ -587,13 +658,15 @@ export default function GalleryPage() {
 
   // ── Data fetching: user-media map ─────────────────────────────────────────
   useEffect(() => {
+    setUserMediaLoaded(false);
     getUserMedia()
       .then((r) => {
         const map = {};
         (r.data ?? []).forEach((um) => { map[um.mediaId] = um; });
         setUserMediaMap(map);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setUserMediaLoaded(true));
   }, [refreshKey]);
 
   // ── Data fetching: albums ─────────────────────────────────────────────────
@@ -878,14 +951,18 @@ export default function GalleryPage() {
                         setSelectedAlbumId(selectedAlbumId === album.id ? null : album.id);
                         setSidebarOpen(false);
                       }}
-                      onDoubleClick={() => {
-                        setRenamingAlbumId(album.id);
-                        setRenameValue(album.name);
-                      }}
-                      title="Click to filter · Double-click to rename"
                     >
                       <span className="sidebar-btn-icon">📁</span>
                       <span className="album-btn-name">{album.name}</span>
+                      <button
+                        className="album-rename-btn"
+                        title="Rename album"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingAlbumId(album.id);
+                          setRenameValue(album.name);
+                        }}
+                      >✏</button>
                       <span className="album-count">{album._count?.items ?? 0}</span>
                     </button>
                   )}

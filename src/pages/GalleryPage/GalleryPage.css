@@ -981,3 +981,49 @@
   color: var(--text-muted);
   padding: 8px 10px;
 }
+
+/* ── Video thumbnail preview ────────────────────────────── */
+.video-thumb-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Album rename button (pencil, visible on hover) ─────── */
+.album-rename-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.album-rename-btn:hover {
+  background: rgba(0,0,0,0.1);
+  color: var(--text-1);
+}
+
+.album-item:hover .album-rename-btn,
+.album-item:focus-within .album-rename-btn {
+  display: flex;
+}
+
+.sidebar-btn.active .album-rename-btn {
+  color: rgba(255,255,255,0.7);
+}
+
+.sidebar-btn.active .album-rename-btn:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
