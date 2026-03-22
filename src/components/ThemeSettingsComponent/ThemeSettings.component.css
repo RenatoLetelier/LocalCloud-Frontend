@@ -1,0 +1,181 @@
+.theme-settings-panel {
+  position: fixed;
+  z-index: 1100;
+  width: 280px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: theme-panel-appear var(--duration-fast) var(--ease);
+  transform-origin: top right;
+}
+
+@keyframes theme-panel-appear {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+
+/* ── Header ── */
+.theme-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-settings-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  letter-spacing: -0.01em;
+}
+
+.theme-settings-reset {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--duration-normal) var(--ease),
+              border-color var(--duration-normal) var(--ease);
+}
+
+.theme-settings-reset:hover {
+  color: var(--text-1);
+  border-color: var(--outline);
+}
+
+/* ── Preview swatch ── */
+.theme-settings-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-settings-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-1);
+  border: 1px solid hsl(0 0% 100% / 0.15);
+}
+
+.theme-settings-swatch-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Section ── */
+.theme-settings-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.theme-settings-section,
+.theme-settings-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Slider row ── */
+.theme-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.theme-slider-row:last-child {
+  margin-bottom: 0;
+}
+
+.theme-slider-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.theme-slider-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.theme-slider-value {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: right;
+}
+
+.theme-slider-track {
+  position: relative;
+  height: 8px;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.theme-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Visible thumb overlay */
+.theme-slider-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  pointer-events: none;
+  border: 1px solid hsl(0 0% 0% / 0.1);
+}
+
+/* ── Preset swatches ── */
+.theme-settings-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-preset-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease),
+              border-color var(--duration-fast) var(--ease);
+  padding: 0;
+  outline: none;
+  box-shadow: var(--shadow-1);
+}
+
+.theme-preset-btn:hover {
+  transform: scale(1.15);
+  border-color: hsl(0 0% 100% / 0.5);
+}
+
+.theme-preset-btn:focus-visible {
+  border-color: var(--text-1);
+  transform: scale(1.15);
+}

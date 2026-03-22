@@ -3,33 +3,41 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 32px 24px;
+  gap: 14px;
+  padding: 36px 28px;
   border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 1.5);
-  background-color: var(--surface-1);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
   color: var(--text-1);
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.15s, transform 0.15s, box-shadow 0.15s, border-color 0.15s;
   min-width: 160px;
-  min-height: 140px;
+  min-height: 148px;
+  transition: background-color var(--duration-normal) var(--ease),
+              border-color     var(--duration-normal) var(--ease),
+              transform        var(--duration-normal) var(--ease),
+              box-shadow       var(--duration-normal) var(--ease);
 }
 
 .card-container:hover {
-  background-color: var(--surface-2);
+  background: var(--surface-2);
   border-color: var(--primary);
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   box-shadow: var(--shadow-2);
 }
 
+.card-container:active {
+  transform: translateY(-1px);
+}
+
 .card-icon {
-  font-size: 36px;
+  font-size: 34px;
   line-height: 1;
 }
 
 .card-name {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-1);
+  letter-spacing: -0.01em;
 }

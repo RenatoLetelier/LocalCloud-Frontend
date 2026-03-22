@@ -1,24 +1,47 @@
 .profile-dropdown-container {
-  padding: .3rem;
-  font-size: medium;
+  padding: 6px;
+  min-width: 160px;
 }
 
 .profile-dropdown-container ul {
   display: flex;
   flex-direction: column;
-  gap: .3rem;
+  gap: 2px;
+  list-style: none;
 }
 
 .profile-dropdown-container li {
   border-radius: var(--radius);
-  padding: .3rem 3rem .3rem .5rem;
-  list-style: none;
+  overflow: hidden;
 }
+
 .profile-dropdown-container li:hover {
   background-color: var(--on-hover);
 }
 
+/* Reset <a> links */
 .profile-dropdown-container a {
+  display: block;
+  padding: 8px 12px;
   color: var(--text-1);
   text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius);
+}
+
+/* Reset <button> — this fixes the default browser border/background */
+.profile-dropdown-container button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
 }

@@ -1,52 +1,84 @@
 .header-container {
   display: flex;
-  height: 44px;
-  padding: 0 15px;
+  height: 48px;
+  padding: 0 16px;
   justify-content: space-between;
   align-items: center;
-
-  font-size: 14px;
-  
-  background-color: var(--surface-1);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
 }
 
 .title {
   cursor: pointer;
-  text-decoration: none;
   color: var(--text-1);
-  font-size: 24px;
-  font-weight: bold;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  user-select: none;
 }
 
 .section {
-  opacity: 0.3;
-  text-transform: capitalize;
-  font-weight: normal;
+  opacity: 0.4;
   font-weight: 500;
+  text-transform: capitalize;
+  letter-spacing: 0;
 }
 
 .settings-section {
   display: flex;
   align-items: center;
+  gap: 2px;
+}
+
+/* Generic icon button used in the header */
+.header-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background-color var(--duration-normal) var(--ease),
+              color var(--duration-normal) var(--ease);
+  flex-shrink: 0;
+}
+
+.header-icon-btn:hover {
+  background: var(--on-hover);
+  color: var(--text-1);
+}
+
+.header-icon-btn.active {
+  background: var(--on-hover);
+  color: var(--primary);
 }
 
 .profile-section {
   display: flex;
   align-items: center;
-  padding: .3rem;
-  margin: .3rem;
+  gap: 6px;
+  padding: 4px 8px;
   border-radius: var(--radius);
   cursor: pointer;
+  transition: background-color var(--duration-normal) var(--ease);
+  user-select: none;
 }
+
 .profile-section:hover {
-  background-color: var(--on-hover);
+  background: var(--on-hover);
 }
 
 .header-username {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-2);
-  margin-right: 2px;
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
