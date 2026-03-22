@@ -5,3 +5,4 @@ export const getVideos = () => api.get("/api/videos?sort=mtime&order=desc&limit=
 export const uploadPhotos = (formData) => api.post("/api/media/upload", formData);
 export const getVideoUploadToken = () => api.get("/api/videos/upload-token");
 export const deduplicateMedia = () => api.post("/api/media/deduplicate");
+export const getUserMedia = () => api.get("/api/user-media");
