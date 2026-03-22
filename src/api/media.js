@@ -18,3 +18,6 @@ export const getVideoUploadToken = () => api.get("/api/videos/upload-token");
 export const deduplicateMedia = () => api.post("/api/media/deduplicate");
 export const getUserMedia     = ()     => api.get("/api/user-media");
 export const createUserMedia  = (data) => api.post("/api/user-media", data);
+export const deleteUserMedia  = (id)   => api.delete(`/api/user-media/${id}`);
+export const deletePhoto      = (id)   => api.delete(`/api/photos/${id}`);
+export const deleteVideo      = (id)   => api.delete(`/api/videos/${id}`);

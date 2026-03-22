@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia } from "../../api/media.js";
-import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem } from "../../api/albums.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deleteVideo } from "../../api/media.js";
+import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem, removeAlbumItem } from "../../api/albums.js";
+import { getUsers } from "../../api/users.js";
 import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
 import "./GalleryPage.css";
 
@@ -11,6 +12,25 @@ import "./GalleryPage.css";
 const mediaCache = { key: -1, photos: null, videos: null };
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+/**
+ * Returns true if a user-media `mediaId` corresponds to a file entry from
+ * the deduplication report.  The media API may use the bare filename, the
+ * filename without extension, or embed the id inside the stream URL, so we
+ * try all three shapes.
+ */
+function mediaIdMatchesDupFile(mediaId, dupFile) {
+  const filename = dupFile.filename ?? "";
+  const url      = dupFile.url      ?? "";
+  const nameNoExt = filename.replace(/\.[^.]+$/, "");
+  return (
+    mediaId === filename  ||
+    mediaId === nameNoExt ||
+    url.includes(`/${mediaId}/`) ||
+    url.includes(`/${mediaId}.`) ||
+    url.endsWith(`/${mediaId}`)
+  );
+}
 
 function photoStreamUrl(item) {
   return `${API_BASE}/api/photos/${item.id}/stream`;
@@ -332,9 +352,84 @@ function VideoThumb({ item, onClick, onContextMenu }) {
   );
 }
 
+// ── Assign-to-user modal (admin only) ────────────────────────────────────────
+
+function AssignToUserModal({ item, onClose, onConfirm }) {
+  const [users,          setUsers]          = useState([]);
+  const [loadingUsers,   setLoadingUsers]   = useState(true);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [error,          setError]          = useState(null);
+  const [busy,           setBusy]           = useState(false);
+
+  useEffect(() => {
+    getUsers()
+      .then((r) => setUsers(r.data.data ?? []))
+      .catch(() => setError("Failed to load users."))
+      .finally(() => setLoadingUsers(false));
+  }, []);
+
+  const handleConfirm = async () => {
+    if (!selectedUserId) return;
+    setBusy(true);
+    try {
+      await onConfirm(selectedUserId);
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? "Assignment failed.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Assign to user</h3>
+          <button className="modal-close-btn" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <p className="modal-subtitle" title={item.filename}>{item.filename}</p>
+
+        {loadingUsers && <p className="modal-loading">Loading users…</p>}
+        {error && <p className="modal-error">{error}</p>}
+
+        {!loadingUsers && !error && (
+          <select
+            className="modal-select"
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+          >
+            <option value="">Select a user…</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.username} — {u.email}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-cancel" onClick={onClose}>Cancel</button>
+          <button
+            className="modal-btn modal-btn-confirm"
+            disabled={!selectedUserId || busy}
+            onClick={handleConfirm}
+          >
+            {busy ? "Assigning…" : "Assign"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
-function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, onCreateAndAdd }) {
+function ContextMenu({
+  x, y, item, albums, userMediaMap, onClose, onAddToAlbum, onCreateAndAdd,
+  selectedAlbumId, isAdmin,
+  onRemoveFromAlbum, onRemoveFromLibrary, onDeletePermanently, onAssignToUser,
+}) {
   const userMedia = userMediaMap[item.id];
 
   return (
@@ -345,6 +440,7 @@ function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, 
     >
       {userMedia ? (
         <>
+          {/* ── Add to album ── */}
           <p className="context-menu-header">Add to album</p>
           {albums.map((album) => (
             <button
@@ -362,9 +458,66 @@ function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, 
           >
             + New album
           </button>
+
+          {/* ── Destructive actions ── */}
+          <div className="context-menu-divider" />
+          {selectedAlbumId && (
+            <button
+              className="context-menu-item context-menu-danger"
+              onClick={() => { onRemoveFromAlbum(item, userMedia); onClose(); }}
+            >
+              📤 Remove from album
+            </button>
+          )}
+          <button
+            className="context-menu-item context-menu-danger"
+            onClick={() => { onRemoveFromLibrary(item, userMedia); onClose(); }}
+          >
+            🗑 Remove from library
+          </button>
+          {isAdmin && (
+            <button
+              className="context-menu-item context-menu-danger"
+              onClick={() => { onDeletePermanently(item); onClose(); }}
+            >
+              ⚠ Delete permanently
+            </button>
+          )}
+
+          {/* ── Admin: assign ── */}
+          {isAdmin && (
+            <>
+              <div className="context-menu-divider" />
+              <button
+                className="context-menu-item"
+                onClick={() => { onAssignToUser(item); onClose(); }}
+              >
+                👤 Assign to user
+              </button>
+            </>
+          )}
         </>
       ) : (
-        <p className="context-menu-empty">Not in your library</p>
+        <>
+          <p className="context-menu-empty">Not in your library</p>
+          {isAdmin && (
+            <>
+              <div className="context-menu-divider" />
+              <button
+                className="context-menu-item context-menu-danger"
+                onClick={() => { onDeletePermanently(item); onClose(); }}
+              >
+                ⚠ Delete permanently
+              </button>
+              <button
+                className="context-menu-item"
+                onClick={() => { onAssignToUser(item); onClose(); }}
+              >
+                👤 Assign to user
+              </button>
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -372,12 +525,49 @@ function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, 
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
-function Lightbox({ item, items, onClose, onNavigate }) {
-  const isMobile = useIsMobile();
+function Lightbox({
+  item, items, onClose, onNavigate,
+  userMediaMap, selectedAlbumId, isAdmin,
+  onRemoveFromAlbum, onRemoveFromLibrary, onDeletePermanently, onAssignToUser,
+}) {
+  const isMobile     = useIsMobile();
   const currentIndex = items.findIndex((i) => i.filename === item.filename);
-  const hasPrev = currentIndex > 0;
-  const hasNext = currentIndex < items.length - 1;
-  const touchStartX = useRef(null);
+  const hasPrev      = currentIndex > 0;
+  const hasNext      = currentIndex < items.length - 1;
+  const touchStartX  = useRef(null);
+
+  // Lookup this item's user-media record (determines which actions are available)
+  const userMedia = userMediaMap?.[item.id] ?? null;
+
+  // Shared action bar rendered inside both desktop and mobile lightbox
+  const actionBar = (
+    <div className="lb-actions">
+      {userMedia && selectedAlbumId && (
+        <button className="lb-btn lb-btn-danger"
+          onClick={() => { onRemoveFromAlbum(item, userMedia); onClose(); }}>
+          📤 Remove from album
+        </button>
+      )}
+      {userMedia && (
+        <button className="lb-btn lb-btn-danger"
+          onClick={() => { onRemoveFromLibrary(item, userMedia); onClose(); }}>
+          🗑 Remove from library
+        </button>
+      )}
+      {isAdmin && (
+        <button className="lb-btn lb-btn-danger"
+          onClick={() => { onDeletePermanently(item); onClose(); }}>
+          ⚠ Delete permanently
+        </button>
+      )}
+      {isAdmin && (
+        <button className="lb-btn"
+          onClick={() => onAssignToUser(item)}>
+          👤 Assign to user
+        </button>
+      )}
+    </div>
+  );
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -436,14 +626,13 @@ function Lightbox({ item, items, onClose, onNavigate }) {
           {mediaContent("lightbox-mobile-img", "lightbox-mobile-video")}
         </div>
 
-        {items.length > 1 && (
-          <div className="lightbox-mobile-info">
-            <span className="lightbox-filename">{item.filename}</span>
-            <span className="lightbox-meta">
-              {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
-            </span>
-          </div>
-        )}
+        <div className="lightbox-mobile-info">
+          <span className="lightbox-filename">{item.filename}</span>
+          <span className="lightbox-meta">
+            {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
+          </span>
+        </div>
+        {actionBar}
       </div>
     );
   }
@@ -480,6 +669,7 @@ function Lightbox({ item, items, onClose, onNavigate }) {
               {formatSize(item.size)} · {new Date(item.mtime).toLocaleDateString()}
             </span>
           </div>
+          {actionBar}
         </div>
 
         <div className="lightbox-nav-slot">
@@ -537,6 +727,9 @@ export default function GalleryPage() {
   const [renameValue, setRenameValue]         = useState("");
   const [albumActionError, setAlbumActionError] = useState(null);
   const [pendingAlbumItem, setPendingAlbumItem] = useState(null); // item to add after album creation
+
+  // ── Assign-to-user modal ──────────────────────────────────────────────────
+  const [assignTarget, setAssignTarget] = useState(null); // item being assigned to another user
 
   // ── Sidebar resize ────────────────────────────────────────────────────────
   const [sidebarWidth, setSidebarWidth] = useState(200);
@@ -807,6 +1000,67 @@ export default function GalleryPage() {
     setSidebarOpen(true);
   }, []);
 
+  // ── Media action handlers ─────────────────────────────────────────────────
+
+  /** Remove item from the currently viewed album (user-scoped; file stays on server). */
+  const handleRemoveFromAlbum = useCallback(async (item, userMedia) => {
+    if (!selectedAlbumId) return;
+    try {
+      await removeAlbumItem(selectedAlbumId, userMedia.id);
+      // Update local album cache immediately so the grid reacts without a round-trip
+      albumItemsCache.current[selectedAlbumId]?.delete(item.id);
+      setSelectedAlbumMediaIds((prev) => {
+        if (!prev) return prev;
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+      setSelected(null);
+      await refreshAlbums();
+    } catch (err) {
+      console.error("Remove from album failed:", err);
+    }
+  }, [selectedAlbumId, refreshAlbums]);
+
+  /** Remove item from this user's library (deletes user-media record; file stays on server). */
+  const handleRemoveFromLibrary = useCallback(async (item, userMedia) => {
+    if (!window.confirm(`Remove "${item.filename}" from your library?`)) return;
+    try {
+      await deleteUserMedia(userMedia.id);
+      setSelected(null);
+      refresh();
+    } catch (err) {
+      console.error("Remove from library failed:", err);
+    }
+  }, [refresh]);
+
+  /** Admin only: permanently delete the media file from the server. */
+  const handleDeletePermanently = useCallback(async (item) => {
+    if (!window.confirm(
+      `Permanently delete "${item.filename}" from the server?\n\nThis removes the file for ALL users and cannot be undone.`
+    )) return;
+    try {
+      if (item.type === "photo") await deletePhoto(item.id);
+      else                       await deleteVideo(item.id);
+      setSelected(null);
+      refresh();
+    } catch (err) {
+      console.error("Permanent delete failed:", err);
+    }
+  }, [refresh]);
+
+  /** Admin only: open the assign-to-user modal. */
+  const handleAssignToUser = useCallback((item) => {
+    setAssignTarget(item);
+  }, []);
+
+  /** Called when the admin confirms a user in the assign modal. */
+  const handleAssignConfirm = useCallback(async (userId) => {
+    if (!assignTarget) return;
+    await createUserMedia({ userId, mediaId: assignTarget.id, mediaType: assignTarget.type });
+    setAssignTarget(null);
+  }, [assignTarget]);
+
   // ── Upload handlers ───────────────────────────────────────────────────────
   const clearUploadQueue = useCallback(() => {
     setUploadQueue((prev) => {
@@ -924,15 +1178,65 @@ export default function GalleryPage() {
 
   const handleDeduplicate = async () => {
     setSidebarOpen(false);
-    if (!window.confirm("Remove all duplicate files? This cannot be undone.")) return;
+    if (!window.confirm(
+      "Scan your library for duplicates and remove extras?\n\n" +
+      "Only duplicate entries in YOUR library are removed. " +
+      "Actual files are never deleted from the server, so other users are unaffected."
+    )) return;
+
     setDedupeLoading(true);
     setDedupeMessage(null);
+
     try {
-      const res = await deduplicateMedia();
-      setDedupeMessage(res.data?.message ?? "Done");
-      refresh();
+      // 1. Hash-scan the media server — returns groups of files with identical SHA-256
+      const dedupeRes = await deduplicateMedia();
+      const dupGroups = dedupeRes.data?.duplicates ?? [];
+
+      // 2. Fetch only THIS user's media assignments
+      const umRes = await getUserMedia();
+      const myRecords = umRes.data ?? [];
+
+      // Track which record ids we will delete (use a Set to avoid double-deletes)
+      const toDelete = new Set();
+
+      // ── Pass A: same mediaId assigned to this user more than once (DB duplicate) ──
+      const byMediaId = {};
+      for (const rec of myRecords) {
+        (byMediaId[rec.mediaId] ??= []).push(rec);
+      }
+      for (const recs of Object.values(byMediaId)) {
+        if (recs.length < 2) continue;
+        // Keep the oldest assignment, mark the rest for removal
+        const sorted = [...recs].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const rec of sorted.slice(1)) toDelete.add(rec.id);
+      }
+
+      // ── Pass B: different mediaIds but same file content (hash duplicate) ──
+      for (const group of dupGroups) {
+        const files = group.files ?? [];
+        // Which of this user's records map to files in this hash-group?
+        const matches = myRecords.filter(
+          (rec) => files.some((f) => mediaIdMatchesDupFile(rec.mediaId, f))
+        );
+        if (matches.length < 2) continue;
+        // Keep the oldest, mark the rest for removal
+        const sorted = [...matches].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const rec of sorted.slice(1)) toDelete.add(rec.id);
+      }
+
+      // ── Delete the duplicate user-media records (never touches actual files) ──
+      await Promise.all([...toDelete].map((id) => deleteUserMedia(id).catch(() => {})));
+
+      if (toDelete.size === 0) {
+        setDedupeMessage("No duplicates found in your library.");
+      } else {
+        setDedupeMessage(
+          `Removed ${toDelete.size} duplicate ${toDelete.size === 1 ? "entry" : "entries"} from your library.`
+        );
+        refresh();
+      }
     } catch (err) {
-      setDedupeMessage(err.message ?? "Failed");
+      setDedupeMessage(err.message ?? "Deduplication failed");
     } finally {
       setDedupeLoading(false);
     }
@@ -999,9 +1303,17 @@ export default function GalleryPage() {
           </nav>
 
           {!loading && !error && (
-            <p className="sidebar-count">
-              {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
-            </p>
+            <div className="sidebar-count-row">
+              <p className="sidebar-count">
+                {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
+              </p>
+              <button
+                className="sidebar-refresh-btn"
+                onClick={refresh}
+                title="Refresh media"
+                aria-label="Refresh media"
+              >↻</button>
+            </div>
           )}
 
           {/* Upload button — visible to every user */}
@@ -1176,6 +1488,12 @@ export default function GalleryPage() {
               title="Upload photos"
               aria-label="Upload photos"
             >⬆</button>
+            <button
+              className="mobile-upload-btn"
+              onClick={refresh}
+              title="Refresh media"
+              aria-label="Refresh media"
+            >↻</button>
           </div>
 
           {loading && (
@@ -1245,6 +1563,13 @@ export default function GalleryPage() {
           items={filteredItems}
           onClose={() => setSelected(null)}
           onNavigate={handleLightboxNavigate}
+          userMediaMap={userMediaMap}
+          selectedAlbumId={selectedAlbumId}
+          isAdmin={isAdmin}
+          onRemoveFromAlbum={handleRemoveFromAlbum}
+          onRemoveFromLibrary={handleRemoveFromLibrary}
+          onDeletePermanently={handleDeletePermanently}
+          onAssignToUser={handleAssignToUser}
         />
       )}
 
@@ -1258,6 +1583,21 @@ export default function GalleryPage() {
           onClose={() => setContextMenu(null)}
           onAddToAlbum={handleAddToAlbum}
           onCreateAndAdd={handleCreateAndAdd}
+          selectedAlbumId={selectedAlbumId}
+          isAdmin={isAdmin}
+          onRemoveFromAlbum={handleRemoveFromAlbum}
+          onRemoveFromLibrary={handleRemoveFromLibrary}
+          onDeletePermanently={handleDeletePermanently}
+          onAssignToUser={handleAssignToUser}
+        />
+      )}
+
+      {/* Admin: assign media to another user */}
+      {assignTarget && (
+        <AssignToUserModal
+          item={assignTarget}
+          onClose={() => setAssignTarget(null)}
+          onConfirm={handleAssignConfirm}
         />
       )}
 
