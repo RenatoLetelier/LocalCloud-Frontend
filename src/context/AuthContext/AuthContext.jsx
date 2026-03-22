@@ -32,11 +32,13 @@ export const AuthProvider = ({ children }) => {
       if (!res.data.token) throw new Error("Invalid credentials");
 
       const decoded = jwtDecode(res.data.token);
+      // Prefer the user object the API returns directly; fall back to JWT claims
+      const apiUser = res.data.user ?? {};
       const user = {
-        id:       decoded.sub ?? decoded.id,
-        email:    decoded.email,
-        username: decoded.username ?? decoded.name,
-        role:     decoded.role,
+        id:       apiUser.id       ?? decoded.sub ?? decoded.id,
+        email:    apiUser.email    ?? decoded.email,
+        username: apiUser.username ?? decoded.username ?? decoded.name ?? decoded.preferred_username,
+        role:     apiUser.role     ?? decoded.role,
       };
 
       setUser(user);

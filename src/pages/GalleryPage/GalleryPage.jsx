@@ -538,6 +538,27 @@ export default function GalleryPage() {
   const [albumActionError, setAlbumActionError] = useState(null);
   const [pendingAlbumItem, setPendingAlbumItem] = useState(null); // item to add after album creation
 
+  // ── Sidebar resize ────────────────────────────────────────────────────────
+  const [sidebarWidth, setSidebarWidth] = useState(200);
+
+  const handleResizeStart = useCallback((e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX     = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMove = (ev) => {
+      const newWidth = Math.max(150, Math.min(420, startWidth + ev.clientX - startX));
+      setSidebarWidth(newWidth);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup",   onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup",   onUp);
+  }, [sidebarWidth]);
+
   // ── Refs ──────────────────────────────────────────────────────────────────
   const mainRef        = useRef(null);
   const photoInputRef  = useRef(null);
@@ -861,7 +882,10 @@ export default function GalleryPage() {
           <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
         )}
 
-        <aside className={`gallery-sidebar${sidebarOpen ? " sidebar-open" : ""}`}>
+        <aside
+          className={`gallery-sidebar${sidebarOpen ? " sidebar-open" : ""}`}
+          style={!isMobile ? { width: sidebarWidth } : undefined}
+        >
           {/* Sheet drag handle + header (mobile only) */}
           <div className="sidebar-sheet-header">
             <div className="sidebar-drag-handle" />
@@ -1056,6 +1080,11 @@ export default function GalleryPage() {
             </div>
           )}
         </aside>
+
+        {/* ── Sidebar resize handle (desktop only) ──────────── */}
+        {!isMobile && (
+          <div className="sidebar-resize-handle" onMouseDown={handleResizeStart} />
+        )}
 
         {/* ── Main content ──────────────────────────────────── */}
         <main className="gallery-main" ref={mainRef}>
