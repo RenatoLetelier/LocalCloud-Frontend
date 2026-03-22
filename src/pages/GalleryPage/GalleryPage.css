@@ -218,6 +218,18 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Upload button — sidebar, visible to all users */
+.upload-photos-btn {
+  margin-top: 4px;
+  border: 1px dashed var(--border) !important;
+  color: var(--primary) !important;
+  font-weight: 500;
+}
+.upload-photos-btn:hover {
+  border-color: var(--primary) !important;
+  background: color-mix(in srgb, var(--primary) 10%, transparent) !important;
+}
+
 .mobile-filter-chevron {
   margin-left: auto;
   font-size: 14px;
@@ -776,12 +788,30 @@
   /* Show mobile filter topbar */
   .mobile-topbar {
     display: flex;
+    align-items: center;
+    gap: 8px;
     padding-bottom: 12px;
     flex-shrink: 0;
   }
 
   .mobile-filter-btn {
     flex: 1;
+  }
+
+  .mobile-upload-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+    color: var(--primary);
+    font-size: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* Main: allow scrolling on mobile */
