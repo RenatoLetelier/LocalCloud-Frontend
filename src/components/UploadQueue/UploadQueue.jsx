@@ -9,11 +9,9 @@ import "./UploadQueue.css";
  *   onDismiss – called when the user closes the panel or auto-dismiss fires
  */
 export default function UploadQueue({ queue, onDismiss }) {
-  if (!queue.length) return null;
-
   const done    = queue.filter((f) => f.status === "done").length;
   const errored = queue.filter((f) => f.status === "error").length;
-  const allDone = done + errored === queue.length;
+  const allDone = queue.length > 0 && done + errored === queue.length;
 
   // Auto-dismiss 4 s after everything finishes
   useEffect(() => {
@@ -21,6 +19,8 @@ export default function UploadQueue({ queue, onDismiss }) {
     const t = setTimeout(onDismiss, 4000);
     return () => clearTimeout(t);
   }, [allDone, onDismiss]);
+
+  if (!queue.length) return null;
 
   return (
     <div className="uq-panel" role="status" aria-live="polite">

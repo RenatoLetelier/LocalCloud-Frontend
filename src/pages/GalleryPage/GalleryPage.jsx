@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
+import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deleteVideo, patchPhoto, patchVideo } from "../../api/media.js";
+import api from "../../api/axiosInstance.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deletePhotoThumbnail, deleteVideo, deleteVideoThumbnail, patchPhoto, patchVideo } from "../../api/media.js";
 import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem, removeAlbumItem } from "../../api/albums.js";
 import { getUsers } from "../../api/users.js";
 import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
@@ -31,15 +33,54 @@ function mediaIdMatchesDupFile(mediaId, dupFile) {
   );
 }
 
-/** Unified stream URL for both photos and videos — uses the new /api/media/file/:filename endpoint */
-function mediaFileUrl(item) {
-  const name = item.filename || item.id;
-  return `${API_BASE}/api/media/file/${encodeURIComponent(name)}`;
-}
+const photoThumbUrl  = (item) => `${API_BASE}/api/photos/${item.id}/thumbnail`;
+const videoThumbUrl  = (item) => `${API_BASE}/api/videos/${item.id}/thumbnail`;
+const photoStreamUrl = (item) => `${API_BASE}/api/photos/${item.id}/stream`;
+const videoStreamUrl = (item) => `${API_BASE}/api/videos/${item.id}/stream/master.m3u8`;
 
-// Keep named aliases used throughout the file
-const photoStreamUrl = mediaFileUrl;
-const videoStreamUrl = mediaFileUrl;
+/**
+ * Fetches an authenticated image via axios (Bearer token) and renders it from
+ * a blob URL. Lazy: only starts the request when the placeholder enters the
+ * viewport (rootMargin 400px so it loads just before it scrolls into view).
+ * Pass lazy={false} for lightbox images that should load immediately.
+ */
+function AuthImg({ src, alt, className, lazy = true, onClick }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    setBlobUrl(null); // clear previous image immediately so the placeholder shows during load
+    if (!src) return;
+    let url = null;
+    let cancelled = false;
+
+    const load = () => {
+      api.get(src, { responseType: "blob" })
+        .then((res) => {
+          if (cancelled) return;
+          url = URL.createObjectURL(res.data);
+          setBlobUrl(url);
+        })
+        .catch(() => {});
+    };
+
+    if (!lazy) { load(); return () => { cancelled = true; if (url) URL.revokeObjectURL(url); }; }
+
+    const el = ref.current;
+    if (!el) { load(); return () => { cancelled = true; if (url) URL.revokeObjectURL(url); }; }
+
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { io.disconnect(); load(); } },
+      { rootMargin: "400px 0px" }
+    );
+    io.observe(el);
+
+    return () => { cancelled = true; io.disconnect(); if (url) URL.revokeObjectURL(url); };
+  }, [src, lazy]);
+
+  if (blobUrl) return <img src={blobUrl} alt={alt} className={className} onClick={onClick} />;
+  return <div ref={ref} className="thumb-placeholder" onClick={onClick} />;
+}
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +97,7 @@ function useIsMobile(breakpoint = 768) {
 const GRID_GAP = 10;
 const PAGINATION_H = 56;
 
-function useItemsPerPage(containerRef, enabled) {
+function useItemsPerPage(containerRef, toolbarRef, selectionMode, enabled) {
   const [itemsPerPage, setItemsPerPage] = useState(20);
 
   useEffect(() => {
@@ -66,18 +107,22 @@ function useItemsPerPage(containerRef, enabled) {
 
     const calc = () => {
       const padX = 20, padY = 20;
+      const toolbarH = toolbarRef?.current
+        ? toolbarRef.current.offsetHeight + 10 // 10 = margin-bottom on bar
+        : 0;
       const w = el.clientWidth  - padX * 2;
-      const h = el.clientHeight - padY * 2 - PAGINATION_H;
+      const h = el.clientHeight - padY * 2 - PAGINATION_H - toolbarH;
       const cols = Math.max(1, Math.floor((w + GRID_GAP) / (160 + GRID_GAP)));
       const rows = Math.max(1, Math.floor((h + GRID_GAP) / (160 + GRID_GAP)));
-      setItemsPerPage(cols * rows);
+      setItemsPerPage(Math.max(1, cols * rows));
     };
 
     calc();
     const ro = new ResizeObserver(calc);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [containerRef, enabled]);
+    // selectionMode in deps triggers recalc when toolbar appears/disappears
+  }, [containerRef, toolbarRef, selectionMode, enabled]);
 
   return itemsPerPage;
 }
@@ -132,6 +177,90 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
   );
 }
 
+// ── Selection bar ─────────────────────────────────────────────────────────────
+
+function SelectionBar({
+  barRef, count, allCount, albums, selectedAlbumId, isAdmin,
+  hasMedia, onClear, onSelectAll, onAddToAlbum, onRemoveFromAlbum,
+  onRemoveFromLibrary, onDeletePermanently,
+}) {
+  const [albumMenuOpen, setAlbumMenuOpen] = useState(false);
+  const albumMenuRef = useRef(null);
+
+  // Close album menu on outside click
+  useEffect(() => {
+    if (!albumMenuOpen) return;
+    const handler = (e) => { if (!albumMenuRef.current?.contains(e.target)) setAlbumMenuOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [albumMenuOpen]);
+
+  return (
+    <div ref={barRef} className="selection-bar">
+      {/* Left: close + count */}
+      <div className="selection-bar-left">
+        <button className="sel-close-btn" onClick={onClear} aria-label="Clear selection">✕</button>
+        <span className="selection-count">{count} selected</span>
+      </div>
+
+      {/* Actions */}
+      <div className="selection-bar-actions">
+        <button className="sel-btn" onClick={onSelectAll}>
+          Select all ({allCount})
+        </button>
+
+        <div className="sel-divider" />
+
+        {/* Add to album — only for items in library */}
+        {hasMedia && (
+          <div className="sel-album-wrap" ref={albumMenuRef}>
+            <button className="sel-btn" onClick={() => setAlbumMenuOpen((v) => !v)}>
+              📁 Add to album ▾
+            </button>
+            {albumMenuOpen && (
+              <div className="sel-album-menu">
+                {albums.length === 0 && (
+                  <p className="sel-album-empty">No albums yet</p>
+                )}
+                {albums.map((a) => (
+                  <button
+                    key={a.id}
+                    className="sel-album-item"
+                    onClick={() => { onAddToAlbum(a.id); setAlbumMenuOpen(false); }}
+                  >
+                    📁 {a.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Remove from album */}
+        {hasMedia && selectedAlbumId && (
+          <button className="sel-btn sel-btn--danger" onClick={onRemoveFromAlbum}>
+            📤 Remove from album
+          </button>
+        )}
+
+        {/* Remove from library */}
+        {hasMedia && (
+          <button className="sel-btn sel-btn--danger" onClick={onRemoveFromLibrary}>
+            🗑 Remove from library
+          </button>
+        )}
+
+        {/* Delete permanently — admin only */}
+        {isAdmin && (
+          <button className="sel-btn sel-btn--danger" onClick={onDeletePermanently}>
+            ⚠ Delete permanently
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const FILTERS = [
@@ -146,18 +275,46 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ── Video player — direct streaming with native Range-request support ─────────
-// The backend now serves raw video files via GET /api/media/file/:filename with
-// proper Content-Range forwarding, so the browser's built-in <video> handles
-// seeking and buffering without a separate HLS layer.
+// ── Video player — HLS streaming via /api/videos/:id/stream/master.m3u8 ───────
+// Uses hls.js for Chrome/Firefox; falls back to native <video src> on Safari
+// which has built-in HLS support. Auth token is forwarded via xhrSetup so the
+// .m3u8 manifest and every .ts segment are fetched with the Bearer header.
 
 function VideoPlayer({ item, videoClassName }) {
+  const videoRef = useRef(null);
+  const src = videoStreamUrl(item);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Safari: native HLS support
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+      return;
+    }
+
+    // Chrome / Firefox: use hls.js with Bearer token on every request
+    if (!Hls.isSupported()) return;
+
+    const hls = new Hls({
+      xhrSetup(xhr) {
+        const token = sessionStorage.getItem("token");
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      },
+    });
+
+    hls.loadSource(src);
+    hls.attachMedia(video);
+
+    return () => hls.destroy();
+  }, [src]);
+
   return (
     <div className="video-player-wrap" onClick={(e) => e.stopPropagation()}>
       <video
-        key={item.filename || item.id}   // remount when item changes so src reloads
+        ref={videoRef}
         className={videoClassName}
-        src={videoStreamUrl(item)}
         controls
         autoPlay
         playsInline
@@ -168,10 +325,39 @@ function VideoPlayer({ item, videoClassName }) {
 
 // ── Thumbnail components ──────────────────────────────────────────────────────
 
-const PhotoThumb = memo(function PhotoThumb({ item, onClick, onContextMenu }) {
+const PhotoThumb = memo(function PhotoThumb({
+  item, onClick, onContextMenu, selected, selectionMode, onSelect, onLongPress,
+}) {
+  const timerRef    = useRef(null);
+  const longFiredRef = useRef(false);
+
+  const startPress = () => {
+    longFiredRef.current = false;
+    timerRef.current = setTimeout(() => { longFiredRef.current = true; onLongPress?.(); }, 500);
+  };
+  const cancelPress = () => clearTimeout(timerRef.current);
+  const handleClick = (e) => {
+    if (longFiredRef.current) { longFiredRef.current = false; return; }
+    onClick?.(e);
+  };
+
   return (
-    <button className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
-      <img src={photoStreamUrl(item)} alt={item.filename} />
+    <button
+      className={`media-thumb${selected ? " is-selected" : ""}`}
+      onClick={handleClick}
+      onContextMenu={onContextMenu}
+      onTouchStart={startPress}
+      onTouchEnd={cancelPress}
+      onTouchMove={cancelPress}
+      title={item.filename}
+    >
+      <AuthImg src={photoThumbUrl(item)} alt={item.filename} />
+      <div
+        className={`thumb-checkbox${selectionMode ? " thumb-checkbox--active" : ""}`}
+        onClick={(e) => { e.stopPropagation(); onSelect?.(); }}
+      >
+        {selected && <span className="thumb-check-icon">✓</span>}
+      </div>
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
       </div>
@@ -179,55 +365,40 @@ const PhotoThumb = memo(function PhotoThumb({ item, onClick, onContextMenu }) {
   );
 });
 
-const VideoThumb = memo(function VideoThumb({ item, onClick, onContextMenu }) {
-  const wrapRef = useRef(null);
-  const [thumbSrc, setThumbSrc] = useState(null);
+const VideoThumb = memo(function VideoThumb({
+  item, onClick, onContextMenu, selected, selectionMode, onSelect, onLongPress,
+}) {
+  const timerRef    = useRef(null);
+  const longFiredRef = useRef(false);
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    let cancelled = false;
-
-    const io = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) return;
-      io.disconnect();
-
-      const vid = document.createElement("video");
-      vid.muted       = true;
-      vid.playsInline = true;
-      vid.crossOrigin = "anonymous";
-      vid.preload     = "metadata";
-      vid.src         = videoStreamUrl(item);
-
-      const captureFrame = () => {
-        if (cancelled) return;
-        try {
-          const c  = document.createElement("canvas");
-          c.width  = vid.videoWidth  || 320;
-          c.height = vid.videoHeight || 180;
-          c.getContext("2d").drawImage(vid, 0, 0, c.width, c.height);
-          if (!cancelled) setThumbSrc(c.toDataURL("image/jpeg", 0.7));
-        } catch (_) { /* tainted canvas — keep placeholder */ }
-      };
-
-      vid.addEventListener("seeked",           captureFrame,   { once: true });
-      vid.addEventListener("loadedmetadata", () => {
-        vid.currentTime = Math.min(1, vid.duration || 1);
-      }, { once: true });
-    }, { rootMargin: "400px 0px" });
-
-    io.observe(el);
-
-    return () => { cancelled = true; io.disconnect(); };
-  }, [item]);
+  const startPress = () => {
+    longFiredRef.current = false;
+    timerRef.current = setTimeout(() => { longFiredRef.current = true; onLongPress?.(); }, 500);
+  };
+  const cancelPress = () => clearTimeout(timerRef.current);
+  const handleClick = (e) => {
+    if (longFiredRef.current) { longFiredRef.current = false; return; }
+    onClick?.(e);
+  };
 
   return (
-    <button ref={wrapRef} className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
-      {thumbSrc
-        ? <img src={thumbSrc} alt={item.filename} className="video-thumb-preview" />
-        : <div className="thumb-placeholder thumb-video-bg" />
-      }
+    <button
+      className={`media-thumb${selected ? " is-selected" : ""}`}
+      onClick={handleClick}
+      onContextMenu={onContextMenu}
+      onTouchStart={startPress}
+      onTouchEnd={cancelPress}
+      onTouchMove={cancelPress}
+      title={item.filename}
+    >
+      <AuthImg src={videoThumbUrl(item)} alt={item.filename} className="video-thumb-preview" />
       <span className="play-badge">▶</span>
+      <div
+        className={`thumb-checkbox${selectionMode ? " thumb-checkbox--active" : ""}`}
+        onClick={(e) => { e.stopPropagation(); onSelect?.(); }}
+      >
+        {selected && <span className="thumb-check-icon">✓</span>}
+      </div>
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
       </div>
@@ -625,10 +796,11 @@ function Lightbox({
 
   const mediaContent = (photoClassName, videoClassName) =>
     item.type === "photo" ? (
-      <img
+      <AuthImg
         src={photoStreamUrl(item)}
         alt={item.filename}
         className={photoClassName}
+        lazy={false}
         onClick={(e) => e.stopPropagation()}
       />
     ) : (
@@ -800,11 +972,26 @@ export default function GalleryPage() {
   const newAlbumInputRef  = useRef(null);
   const renameInputRef    = useRef(null);
   const albumItemsCache   = useRef({}); // albumId → Set<mediaId>, cleared on refreshAlbums
+  const selectionBarRef   = useRef(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // ── Multi-select ───────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const selectionMode = selectedIds.size > 0;
+
+  const toggleSelection = useCallback((id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
   // ── Desktop pagination ────────────────────────────────────────────────────
-  const itemsPerPage = useItemsPerPage(mainRef, !isMobile);
+  const itemsPerPage = useItemsPerPage(mainRef, selectionBarRef, selectionMode, !isMobile);
   const [currentPage, setCurrentPage] = useState(0);
 
   // Apply album + admin view filters on top of type-filtered items.
@@ -855,7 +1042,21 @@ export default function GalleryPage() {
     return () => io.disconnect();
   }, [isMobile, mobileCount, filteredItems.length]);
 
+  // selectAll is defined here so it can close over displayItems
+  // We use the ref pattern to avoid stale closures in the callback
+  const displayItemsRef = useRef([]);
+
   const displayItems = isMobile ? filteredItems.slice(0, mobileCount) : pageItems;
+  displayItemsRef.current = displayItems;
+
+  const selectAll = useCallback(
+    () => setSelectedIds(new Set(displayItemsRef.current.map((i) => i.id))),
+    []
+  );
+
+  // Clear selection when the user changes filter, album, or data
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { clearSelection(); }, [filter, selectedAlbumId]);
 
   // ── Data fetching: media ──────────────────────────────────────────────────
   useEffect(() => {
@@ -1085,19 +1286,108 @@ export default function GalleryPage() {
 
   /** Admin only: permanently delete the media file from the server. */
   const handleDeletePermanently = useCallback(async (item) => {
-    const name = item.filename || item.id;
+    const label = item.filename || item.id;
     if (!window.confirm(
-      `Permanently delete "${name}" from the server?\n\nThis removes the file for ALL users and cannot be undone.`
+      `Permanently delete "${label}" from the server?\n\nThis removes the file for ALL users and cannot be undone.`
     )) return;
     try {
-      if (item.type === "photo") await deletePhoto(name);
-      else                       await deleteVideo(name);
+      // 1. Remove the user-media association so no orphaned records remain
+      const um = userMediaMap[item.id];
+      if (um) await deleteUserMedia(um.id);
+
+      // 2. Delete the media record from the server
+      if (item.type === "photo") {
+        await deletePhoto(item.id);
+        // 3. Explicitly delete the thumbnail file (best-effort — ignore 404 if
+        //    the backend already cascades this in its DELETE /photos/:id handler)
+        try { await deletePhotoThumbnail(item.id); } catch {}
+      } else {
+        await deleteVideo(item.id);
+        try { await deleteVideoThumbnail(item.id); } catch {}
+      }
+
       setSelected(null);
       refresh();
     } catch (err) {
       console.error("Permanent delete failed:", err);
     }
-  }, [refresh]);
+  }, [refresh, userMediaMap]);
+
+  // ── Bulk selection actions ─────────────────────────────────────────────────
+
+  const handleBulkRemoveFromLibrary = useCallback(async () => {
+    if (!window.confirm(`Remove ${selectedIds.size} item(s) from your library?`)) return;
+    try {
+      const targets = filteredItems.filter((i) => selectedIds.has(i.id) && userMediaMap[i.id]);
+      await Promise.all(targets.map((i) => deleteUserMedia(userMediaMap[i.id].id)));
+      clearSelection();
+      refresh();
+    } catch (err) {
+      console.error("Bulk remove from library failed:", err);
+    }
+  }, [selectedIds, filteredItems, userMediaMap, clearSelection, refresh]);
+
+  const handleBulkAddToAlbum = useCallback(async (albumId) => {
+    try {
+      const targets = filteredItems.filter((i) => selectedIds.has(i.id) && userMediaMap[i.id]);
+      if (!targets.length) return;
+      await Promise.all(targets.map((i) => addAlbumItem(albumId, userMediaMap[i.id].id)));
+      delete albumItemsCache.current[albumId];
+      await refreshAlbums();
+      clearSelection();
+    } catch (err) {
+      console.error("Bulk add to album failed:", err);
+    }
+  }, [selectedIds, filteredItems, userMediaMap, clearSelection, refreshAlbums]);
+
+  const handleBulkRemoveFromAlbum = useCallback(async () => {
+    if (!selectedAlbumId) return;
+    try {
+      const targets = filteredItems.filter((i) => selectedIds.has(i.id) && userMediaMap[i.id]);
+      await Promise.all(targets.map((i) => removeAlbumItem(selectedAlbumId, userMediaMap[i.id].id)));
+      targets.forEach((i) => albumItemsCache.current[selectedAlbumId]?.delete(i.id));
+      setSelectedAlbumMediaIds((prev) => {
+        if (!prev) return prev;
+        const next = new Set(prev);
+        targets.forEach((i) => next.delete(i.id));
+        return next;
+      });
+      clearSelection();
+      await refreshAlbums();
+    } catch (err) {
+      console.error("Bulk remove from album failed:", err);
+    }
+  }, [selectedIds, selectedAlbumId, filteredItems, userMediaMap, clearSelection, refreshAlbums]);
+
+  const handleBulkDeletePermanently = useCallback(async () => {
+    if (!window.confirm(`Permanently delete ${selectedIds.size} item(s)? This cannot be undone.`)) return;
+    try {
+      const targets = filteredItems.filter((i) => selectedIds.has(i.id));
+
+      // 1. Delete all user-media associations first (no orphaned records)
+      await Promise.all(
+        targets
+          .filter((i) => userMediaMap[i.id])
+          .map((i) => deleteUserMedia(userMediaMap[i.id].id))
+      );
+
+      // 2. Delete media records + thumbnail files
+      await Promise.all(targets.map(async (i) => {
+        if (i.type === "photo") {
+          await deletePhoto(i.id);
+          try { await deletePhotoThumbnail(i.id); } catch {}
+        } else {
+          await deleteVideo(i.id);
+          try { await deleteVideoThumbnail(i.id); } catch {}
+        }
+      }));
+
+      clearSelection();
+      refresh();
+    } catch (err) {
+      console.error("Bulk delete failed:", err);
+    }
+  }, [selectedIds, filteredItems, userMediaMap, clearSelection, refresh]);
 
   /** Admin only: open the assign-to-user modal. */
   const handleAssignToUser = useCallback((item) => {
@@ -1172,13 +1462,14 @@ export default function GalleryPage() {
         );
 
         // Step 2 — auto-assign the uploaded photo to the uploader.
-        // The media API may return the id at different paths; try the most common ones.
-        const data   = res.data ?? {};
+        // The server wraps most responses in { data: … }; try all known shapes.
+        const raw    = res.data ?? {};
+        const data   = raw.data ?? raw;           // unwrap { data: … } envelope if present
         const mediaId =
-          data.files?.[0]?.id ??  // { files: [{ id }] }
-          data.file?.id       ??  // { file: { id } }
-          data[0]?.id         ??  // [{ id }]
-          data.id;                // { id }
+          data.files?.[0]?.id ??  // { data: { files: [{ id }] } }
+          data.file?.id       ??  // { data: { file: { id } } }
+          (Array.isArray(data) ? data[0]?.id : undefined) ?? // { data: [{ id }] }
+          data.id;                // { data: { id } }  or flat { id }
 
         if (mediaId && user?.id) {
           await createUserMedia({ userId: user.id, mediaId, mediaType: "photo" });
@@ -1432,26 +1723,27 @@ export default function GalleryPage() {
                       }}
                     />
                   ) : (
-                    <button
-                      className={`sidebar-btn album-btn${selectedAlbumId === album.id ? " active" : ""}`}
-                      onClick={() => {
-                        setSelectedAlbumId(selectedAlbumId === album.id ? null : album.id);
-                        setSidebarOpen(false);
-                      }}
-                    >
-                      <span className="sidebar-btn-icon">📁</span>
-                      <span className="album-btn-name">{album.name}</span>
+                    <>
+                      <button
+                        className={`sidebar-btn album-btn${selectedAlbumId === album.id ? " active" : ""}`}
+                        onClick={() => {
+                          setSelectedAlbumId(selectedAlbumId === album.id ? null : album.id);
+                          setSidebarOpen(false);
+                        }}
+                      >
+                        <span className="sidebar-btn-icon">📁</span>
+                        <span className="album-btn-name">{album.name}</span>
+                        <span className="album-count">{album._count?.items ?? 0}</span>
+                      </button>
                       <button
                         className="album-rename-btn"
                         title="Rename album"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
                           setRenamingAlbumId(album.id);
                           setRenameValue(album.name);
                         }}
                       >✏</button>
-                      <span className="album-count">{album._count?.items ?? 0}</span>
-                    </button>
+                    </>
                   )}
                 </div>
               ))}
@@ -1535,7 +1827,7 @@ export default function GalleryPage() {
         {/* ── Main content ──────────────────────────────────── */}
         <main className="gallery-main" ref={mainRef}>
 
-          <div className="mobile-topbar">
+          {!selectionMode && <div className="mobile-topbar">
             <button className="mobile-filter-btn" onClick={() => setSidebarOpen(true)}>
               <span className="sidebar-btn-icon">
                 {selectedAlbumId
@@ -1559,7 +1851,7 @@ export default function GalleryPage() {
               title="Refresh media"
               aria-label="Refresh media"
             >↻</button>
-          </div>
+          </div>}
 
           {loading && (
             <div className="gallery-status">
@@ -1584,21 +1876,57 @@ export default function GalleryPage() {
 
           {!loading && !error && filteredItems.length > 0 && (
             <>
+              {selectionMode && (
+                <SelectionBar
+                  barRef={selectionBarRef}
+                  count={selectedIds.size}
+                  allCount={displayItems.length}
+                  albums={albums}
+                  selectedAlbumId={selectedAlbumId}
+                  isAdmin={isAdmin}
+                  hasMedia={filteredItems
+                    .filter((i) => selectedIds.has(i.id))
+                    .some((i) => userMediaMap[i.id])}
+                  onClear={clearSelection}
+                  onSelectAll={selectAll}
+                  onAddToAlbum={handleBulkAddToAlbum}
+                  onRemoveFromAlbum={handleBulkRemoveFromAlbum}
+                  onRemoveFromLibrary={handleBulkRemoveFromLibrary}
+                  onDeletePermanently={handleBulkDeletePermanently}
+                />
+              )}
+
               <div className="media-grid">
                 {displayItems.map((item) =>
                   item.type === "photo" ? (
                     <PhotoThumb
                       key={item.id}
                       item={item}
-                      onClick={() => setSelected(item)}
-                      onContextMenu={(e) => handleContextMenu(e, item)}
+                      selected={selectedIds.has(item.id)}
+                      selectionMode={selectionMode}
+                      onClick={selectionMode
+                        ? () => toggleSelection(item.id)
+                        : () => setSelected(item)}
+                      onContextMenu={selectionMode
+                        ? undefined
+                        : (e) => handleContextMenu(e, item)}
+                      onSelect={() => toggleSelection(item.id)}
+                      onLongPress={() => toggleSelection(item.id)}
                     />
                   ) : (
                     <VideoThumb
                       key={item.id}
                       item={item}
-                      onClick={() => setSelected(item)}
-                      onContextMenu={(e) => handleContextMenu(e, item)}
+                      selected={selectedIds.has(item.id)}
+                      selectionMode={selectionMode}
+                      onClick={selectionMode
+                        ? () => toggleSelection(item.id)
+                        : () => setSelected(item)}
+                      onContextMenu={selectionMode
+                        ? undefined
+                        : (e) => handleContextMenu(e, item)}
+                      onSelect={() => toggleSelection(item.id)}
+                      onLongPress={() => toggleSelection(item.id)}
                     />
                   )
                 )}

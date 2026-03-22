@@ -283,6 +283,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px;
+  /* Stack rows from the top so a non-full last page doesn't stretch items */
+  align-content: start;
 }
 
 /* ── Individual thumbnail ──────────────────────────────── */
@@ -308,6 +310,189 @@
 .media-thumb:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/* ── Multi-select: thumbnail selected state ─────────────── */
+.media-thumb.is-selected {
+  outline: 2.5px solid var(--primary);
+  outline-offset: -2.5px;
+}
+
+.media-thumb.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--primary);
+  opacity: 0.18;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Checkbox overlay (top-left of each thumb) ─────────── */
+.thumb-checkbox {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.media-thumb:hover .thumb-checkbox,
+.thumb-checkbox.thumb-checkbox--active {
+  opacity: 1;
+}
+
+.media-thumb.is-selected .thumb-checkbox {
+  background: var(--primary);
+  border-color: var(--primary);
+  opacity: 1;
+}
+
+.thumb-check-icon {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ── Selection action bar ───────────────────────────────── */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  z-index: 10;
+}
+
+.selection-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sel-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-3);
+  color: var(--text-1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.sel-close-btn:hover { background: var(--border); }
+
+.selection-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.selection-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sel-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.sel-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sel-btn:hover { background: var(--surface-3); }
+
+.sel-btn--danger {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 40%, transparent);
+}
+
+.sel-btn--danger:hover {
+  background: var(--error);
+  color: #fff;
+  border-color: var(--error);
+}
+
+/* Album dropdown inside selection bar */
+.sel-album-wrap { position: relative; }
+
+.sel-album-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 170px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.sel-album-item {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.sel-album-item:hover { background: var(--surface-2); }
+
+.sel-album-empty {
+  padding: 9px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
 }
 
 .media-thumb img {
@@ -395,9 +580,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 3px;
-  padding: 12px 0 0;
+  padding: 12px 8px 4px;
   flex-shrink: 0;
+  min-width: 0;
+  /* Always visible at the bottom of the main area */
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  z-index: 5;
 }
 
 .pagination-btn {
@@ -834,6 +1026,19 @@
   .media-thumb {
     border-radius: 4px;
   }
+
+  /* Selection bar: sticky at top on mobile */
+  .selection-bar {
+    position: sticky;
+    top: 0;
+    border-radius: 0;
+    margin: -20px -20px 10px;
+    padding: 10px 16px;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    z-index: 20;
+  }
 }
 
 /* ── Admin view toggle ─────────────────────────────────── */
@@ -910,10 +1115,14 @@
 }
 
 .album-item {
+  display: flex;
+  align-items: center;
   width: 100%;
 }
 
 .album-btn {
+  flex: 1;
+  min-width: 0;
   justify-content: flex-start;
 }
 
@@ -1245,11 +1454,11 @@
   display: flex;
 }
 
-.sidebar-btn.active .album-rename-btn {
+.sidebar-btn.active + .album-rename-btn {
   color: rgba(255,255,255,0.7);
 }
 
-.sidebar-btn.active .album-rename-btn:hover {
+.sidebar-btn.active + .album-rename-btn:hover {
   background: rgba(255,255,255,0.2);
   color: #fff;
 }
