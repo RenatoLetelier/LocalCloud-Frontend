@@ -563,8 +563,9 @@ export default function GalleryPage() {
   const mainRef        = useRef(null);
   const photoInputRef  = useRef(null);
   const videoInputRef  = useRef(null);
-  const newAlbumInputRef = useRef(null);
-  const renameInputRef   = useRef(null);
+  const newAlbumInputRef  = useRef(null);
+  const renameInputRef    = useRef(null);
+  const albumItemsCache   = useRef({}); // albumId → Set<mediaId>, cleared on refreshAlbums
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -693,6 +694,7 @@ export default function GalleryPage() {
   // ── Data fetching: albums ─────────────────────────────────────────────────
   const refreshAlbums = useCallback(async () => {
     setAlbumsLoading(true);
+    albumItemsCache.current = {}; // invalidate album items cache on any album list refresh
     try {
       const r = await getAlbums();
       setAlbums(r.data ?? []);
@@ -705,14 +707,20 @@ export default function GalleryPage() {
 
   useEffect(() => { refreshAlbums(); }, [refreshAlbums]);
 
-  // ── Data fetching: selected album items ───────────────────────────────────
+  // ── Data fetching: selected album items (with ref cache) ──────────────────
   useEffect(() => {
     if (!selectedAlbumId) { setSelectedAlbumMediaIds(null); return; }
+
+    // Serve from cache immediately — no network round-trip
+    const cached = albumItemsCache.current[selectedAlbumId];
+    if (cached) { setSelectedAlbumMediaIds(cached); return; }
+
     getAlbum(selectedAlbumId)
       .then((r) => {
         const mediaIds = new Set(
           (r.data.items ?? []).map((ai) => ai.userMedia?.mediaId).filter(Boolean)
         );
+        albumItemsCache.current[selectedAlbumId] = mediaIds;
         setSelectedAlbumMediaIds(mediaIds);
       })
       .catch(() => setSelectedAlbumMediaIds(new Set()));
@@ -771,11 +779,14 @@ export default function GalleryPage() {
   const handleAddToAlbum = async (albumId, userMediaId) => {
     try {
       await addAlbumItem(albumId, userMediaId);
+      // Bust cache for this album so next visit re-fetches fresh items
+      delete albumItemsCache.current[albumId];
       if (selectedAlbumId === albumId) {
         const r = await getAlbum(albumId);
         const mediaIds = new Set(
           (r.data.items ?? []).map((ai) => ai.userMedia?.mediaId).filter(Boolean)
         );
+        albumItemsCache.current[albumId] = mediaIds;
         setSelectedAlbumMediaIds(mediaIds);
       }
       await refreshAlbums(); // refresh counts
