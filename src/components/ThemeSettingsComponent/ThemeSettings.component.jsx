@@ -63,12 +63,23 @@ export default function ThemeSettings({ isOpen, anchorRef, onClose }) {
     if (!isOpen) return;
     const anchor = anchorRef?.current;
     const panel = panelRef.current;
-    if (!anchor || !panel) return;
+    if (!panel) return;
 
     const position = () => {
+      if (window.innerWidth <= 480) {
+        // On mobile: pin to the top of the screen with safe margins
+        panel.style.top   = "60px";
+        panel.style.left  = "8px";
+        panel.style.right = "8px";
+        panel.style.width = "auto";
+        return;
+      }
+      if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
       panel.style.top   = `${rect.bottom + 6}px`;
       panel.style.right = `${window.innerWidth - rect.right}px`;
+      panel.style.left  = "";
+      panel.style.width = "";
     };
 
     position();

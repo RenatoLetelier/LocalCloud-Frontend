@@ -18,3 +18,14 @@
   gap: 16px;
   justify-content: center;
 }
+
+@media (max-width: 480px) {
+  .home-main {
+    padding: 24px 16px;
+  }
+
+  .home-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}

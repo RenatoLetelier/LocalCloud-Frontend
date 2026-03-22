@@ -28,11 +28,13 @@ export default function Header() {
       </h1>
 
       <div className="settings-section">
-        <ThemeButtonComponent />
+        <div className="header-desktop-only">
+          <ThemeButtonComponent />
+        </div>
 
         <button
           ref={paletteRef}
-          className={`header-icon-btn${themeSettingsOpen ? " active" : ""}`}
+          className={`header-icon-btn header-desktop-only${themeSettingsOpen ? " active" : ""}`}
           onClick={() => setThemeSettingsOpen((o) => !o)}
           title="Theme colors"
           aria-label="Theme colors"
@@ -42,7 +44,7 @@ export default function Header() {
 
         <div className="profile-section" ref={profileRef} onClick={() => setIsOpen((o) => !o)}>
           {(user?.username || user?.email) && (
-            <span className="header-username">{user.username || user.email}</span>
+            <span className="header-username header-desktop-only">{user.username || user.email}</span>
           )}
           <ArrowDownIcon size={18} />
           <ProfileIcon size={26} />
@@ -53,7 +55,10 @@ export default function Header() {
           anchorRef={profileRef}
           onClose={() => setIsOpen(false)}
         >
-          <ProfileDropdownContent />
+          <ProfileDropdownContent
+            user={user}
+            onThemeSettings={() => { setIsOpen(false); setThemeSettingsOpen((o) => !o); }}
+          />
         </Dropdown>
 
         <ThemeSettings

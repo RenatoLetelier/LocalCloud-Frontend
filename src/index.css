@@ -15,6 +15,8 @@ html, body { height: 100%; }
 ───────────────────────────────────────────────────────────────────────────── */
 
 :root {
+  color-scheme: dark;
+
   /* ── Dark theme defaults ── */
   --h: 240;   /* background hue     0–360  */
   --s: 4%;    /* background sat     0–20%  */
@@ -75,6 +77,14 @@ html, body { height: 100%; }
   --duration-slow:   260ms;
   --ease:            cubic-bezier(0.16, 1, 0.3, 1);
 
+  /* ── Base ── */
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   color: var(--text-1);
   background: var(--bg);
 }
@@ -151,16 +161,6 @@ html[data-theme="dark"] {
 /* ─────────────────────────────────────────────────────────────────────────────
    BASE
 ───────────────────────────────────────────────────────────────────────────── */
-
-:root {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.5;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
 
 body {
   min-height: 100vh;

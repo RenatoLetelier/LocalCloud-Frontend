@@ -84,3 +84,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+@media (max-width: 480px) {
+  .header-desktop-only {
+    display: none !important;
+  }
+}
