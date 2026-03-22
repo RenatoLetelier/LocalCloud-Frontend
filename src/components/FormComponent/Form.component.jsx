@@ -1,96 +1,119 @@
-import { useEffect, useRef, useReducer } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../context/Contexts.jsx";
 import InputComponent from "../InputComponent/Input.component.jsx";
 import "./Form.component.css";
 
-const initialState = {
-  loading: false,
-  error: null,
+// ── Validation rules ──────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const validators = {
+  email: (v) => {
+    if (!v.trim())              return "Email is required.";
+    if (!EMAIL_RE.test(v.trim())) return "Enter a valid email address.";
+    return null;
+  },
+  password: (v) => {
+    if (!v)          return "Password is required.";
+    if (v.length < 6) return "Password must be at least 6 characters.";
+    return null;
+  },
 };
 
-function loginReducer(state, action) {
-  switch (action.type) {
-    case "LOGIN_START":
-      return { loading: true, error: null };
-    case "LOGIN_SUCCESS":
-      return { loading: false, error: null };
-    case "LOGIN_ERROR":
-      return { loading: false, error: action.payload };
-    case "LOGOUT":
-      return { ...initialState };
-
-    default:
-      return state;
-  }
-}
+// ── Form component ────────────────────────────────────────────────────────────
 
 export default function FormComponent({
   enableUsername = true,
-  enableEmail = true,
+  enableEmail    = true,
   enablePassword = true,
 }) {
   const { login } = useAuth();
-  const [state, dispatch] = useReducer(loginReducer, initialState);
-  const emailInputRef = useRef(null);
-  const passwordInputRef = useRef(null);
-  // Falta Username
+
+  const [email,       setEmail]       = useState("");
+  const [password,    setPassword]    = useState("");
+  const [touched,     setTouched]     = useState({});   // tracks which fields have been blurred
+  const [loading,     setLoading]     = useState(false);
+  const [serverError, setServerError] = useState(null);
+
+  // Compute per-field errors (only shown after the field has been touched)
+  const emailErr    = enableEmail    && touched.email    ? validators.email(email)       : null;
+  const passwordErr = enablePassword && touched.password ? validators.password(password) : null;
+
+  // Form is valid when all enabled fields pass their validator
+  const isValid = (
+    (!enableEmail    || !validators.email(email))    &&
+    (!enablePassword || !validators.password(password))
+  );
+
+  const blur = (field) => setTouched((t) => ({ ...t, [field]: true }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const email = emailInputRef.current?.value;
-    const password = passwordInputRef.current?.value;
-    // Falta Username
+    // Touch all fields to surface any hidden errors
+    setTouched({ email: true, password: true });
+    if (!isValid) return;
 
-    dispatch({ type: "LOGIN_START" });
-
+    setLoading(true);
+    setServerError(null);
     try {
-      await login({ email, password });
-      dispatch({ type: "LOGIN_SUCCESS" });
+      await login({ email: email.trim(), password });
     } catch (err) {
-      dispatch({
-        type: "LOGIN_ERROR",
-        payload: err?.message || "Error during login, please try again.",
-      });
+      setServerError(err?.message ?? "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Auto-clear server error after 5 s
   useEffect(() => {
-    if (!state.error) return;
-    const t = setTimeout(() => {
-      dispatch({ type: "LOGIN_ERROR", payload: null });
-    }, 5000);
+    if (!serverError) return;
+    const t = setTimeout(() => setServerError(null), 5000);
     return () => clearTimeout(t);
-  }, [state.error]);
+  }, [serverError]);
 
   return (
-    <form onSubmit={handleSubmit} className="form">
-      {/* Username input */}
-      <InputComponent
-        typeInput={"username"}
-        isShowed={enableUsername}
-        placeholder="Username"
-      />
+    <form onSubmit={handleSubmit} className="form" noValidate>
+      {/* Username — hidden on LoginPage, shown if a future sign-up page enables it */}
+      {enableUsername && (
+        <InputComponent
+          typeInput="text"
+          isShowed={enableUsername}
+          placeholder="Username"
+        />
+      )}
 
-      {/* Email input */}
-      <InputComponent
-        typeInput={"email"}
-        isShowed={enableEmail}
-        placeholder="Email"
-        ref={emailInputRef}
-      />
+      {enableEmail && (
+        <InputComponent
+          typeInput="email"
+          isShowed={enableEmail}
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onBlur={() => blur("email")}
+          error={emailErr}
+        />
+      )}
 
-      {/* Password input */}
-      <InputComponent
-        typeInput={"password"}
-        isShowed={enablePassword}
-        placeholder="Password"
-        ref={passwordInputRef}
-      />
+      {enablePassword && (
+        <InputComponent
+          typeInput="password"
+          isShowed={enablePassword}
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onBlur={() => blur("password")}
+          error={passwordErr}
+        />
+      )}
 
-      {state.error && <p className="error-message">{state.error}</p>}
+      {serverError && <p className="error-message">{serverError}</p>}
 
-      <button type="submit" className="submit-button" disabled={state.loading}>
-        {state.loading ? "Loading..." : "Log in"}
+      <button
+        type="submit"
+        className="submit-button"
+        disabled={loading}
+      >
+        {loading ? "Signing in…" : "Sign in"}
       </button>
     </form>
   );

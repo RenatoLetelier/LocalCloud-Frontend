@@ -1,3 +1,24 @@
+/* ── Outer wrapper — always present, used for error message layout ── */
+.input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+/* ── Error state ── */
+.input--error {
+  border-color: var(--error, #e05252) !important;
+  outline-color: var(--error, #e05252);
+}
+
+.input-error-msg {
+  font-size: 0.75rem;
+  color: var(--error, #e05252);
+  margin: 0;
+  padding-left: 2px;
+}
+
 .input {
   padding: 0.75rem;
   border-radius: var(--radius);
@@ -6,6 +27,15 @@
   color: var(--text-1);
   display: flex;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-input, var(--surface-1));
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
 }
 
 .password-input-wrapper {
