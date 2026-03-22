@@ -122,32 +122,62 @@
   text-align: right;
 }
 
+/* The gradient strip */
 .theme-slider-track {
   position: relative;
-  height: 8px;
+  height: 14px;
   border-radius: 99px;
-  overflow: hidden;
+  border: 1px solid hsl(0 0% 0% / 0.12);
 }
 
+/* Range input sits on top of the gradient track */
 .theme-slider {
-  position: absolute;
-  inset: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
   width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
-  opacity: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 99px;
+}
+
+/* WebKit thumb */
+.theme-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid hsl(0 0% 0% / 0.2);
+  box-shadow: 0 1px 4px hsl(0 0% 0% / 0.35);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.theme-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* Firefox thumb */
+.theme-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid hsl(0 0% 0% / 0.2);
+  box-shadow: 0 1px 4px hsl(0 0% 0% / 0.35);
   cursor: pointer;
 }
 
-/* Visible thumb overlay */
-.theme-slider-track::after {
-  content: "";
-  position: absolute;
-  inset: 0;
+/* Firefox track (transparent so gradient shows through) */
+.theme-slider::-moz-range-track {
+  background: transparent;
+  height: 14px;
   border-radius: 99px;
-  pointer-events: none;
-  border: 1px solid hsl(0 0% 0% / 0.1);
 }
 
 /* ── Preset swatches ── */

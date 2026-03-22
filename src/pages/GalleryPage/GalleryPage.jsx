@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
 import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deleteVideo, patchPhoto, patchVideo } from "../../api/media.js";
