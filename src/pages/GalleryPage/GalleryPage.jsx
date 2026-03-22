@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia } from "../../api/media.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia } from "../../api/media.js";
 import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem } from "../../api/albums.js";
 import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
 import "./GalleryPage.css";
@@ -11,6 +11,25 @@ import "./GalleryPage.css";
 const mediaCache = { key: -1, photos: null, videos: null };
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+/**
+ * Returns true if a user-media `mediaId` corresponds to a file entry from
+ * the deduplication report.  The media API may use the bare filename, the
+ * filename without extension, or embed the id inside the stream URL, so we
+ * try all three shapes.
+ */
+function mediaIdMatchesDupFile(mediaId, dupFile) {
+  const filename = dupFile.filename ?? "";
+  const url      = dupFile.url      ?? "";
+  const nameNoExt = filename.replace(/\.[^.]+$/, "");
+  return (
+    mediaId === filename  ||
+    mediaId === nameNoExt ||
+    url.includes(`/${mediaId}/`) ||
+    url.includes(`/${mediaId}.`) ||
+    url.endsWith(`/${mediaId}`)
+  );
+}
 
 function photoStreamUrl(item) {
   return `${API_BASE}/api/photos/${item.id}/stream`;
@@ -924,15 +943,65 @@ export default function GalleryPage() {
 
   const handleDeduplicate = async () => {
     setSidebarOpen(false);
-    if (!window.confirm("Remove all duplicate files? This cannot be undone.")) return;
+    if (!window.confirm(
+      "Scan your library for duplicates and remove extras?\n\n" +
+      "Only duplicate entries in YOUR library are removed. " +
+      "Actual files are never deleted from the server, so other users are unaffected."
+    )) return;
+
     setDedupeLoading(true);
     setDedupeMessage(null);
+
     try {
-      const res = await deduplicateMedia();
-      setDedupeMessage(res.data?.message ?? "Done");
-      refresh();
+      // 1. Hash-scan the media server — returns groups of files with identical SHA-256
+      const dedupeRes = await deduplicateMedia();
+      const dupGroups = dedupeRes.data?.duplicates ?? [];
+
+      // 2. Fetch only THIS user's media assignments
+      const umRes = await getUserMedia();
+      const myRecords = umRes.data ?? [];
+
+      // Track which record ids we will delete (use a Set to avoid double-deletes)
+      const toDelete = new Set();
+
+      // ── Pass A: same mediaId assigned to this user more than once (DB duplicate) ──
+      const byMediaId = {};
+      for (const rec of myRecords) {
+        (byMediaId[rec.mediaId] ??= []).push(rec);
+      }
+      for (const recs of Object.values(byMediaId)) {
+        if (recs.length < 2) continue;
+        // Keep the oldest assignment, mark the rest for removal
+        const sorted = [...recs].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const rec of sorted.slice(1)) toDelete.add(rec.id);
+      }
+
+      // ── Pass B: different mediaIds but same file content (hash duplicate) ──
+      for (const group of dupGroups) {
+        const files = group.files ?? [];
+        // Which of this user's records map to files in this hash-group?
+        const matches = myRecords.filter(
+          (rec) => files.some((f) => mediaIdMatchesDupFile(rec.mediaId, f))
+        );
+        if (matches.length < 2) continue;
+        // Keep the oldest, mark the rest for removal
+        const sorted = [...matches].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const rec of sorted.slice(1)) toDelete.add(rec.id);
+      }
+
+      // ── Delete the duplicate user-media records (never touches actual files) ──
+      await Promise.all([...toDelete].map((id) => deleteUserMedia(id).catch(() => {})));
+
+      if (toDelete.size === 0) {
+        setDedupeMessage("No duplicates found in your library.");
+      } else {
+        setDedupeMessage(
+          `Removed ${toDelete.size} duplicate ${toDelete.size === 1 ? "entry" : "entries"} from your library.`
+        );
+        refresh();
+      }
     } catch (err) {
-      setDedupeMessage(err.message ?? "Failed");
+      setDedupeMessage(err.message ?? "Deduplication failed");
     } finally {
       setDedupeLoading(false);
     }
