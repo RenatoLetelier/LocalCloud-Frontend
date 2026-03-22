@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotos, getVideoUploadToken, deduplicateMedia } from "../../api/media.js";
+import { getPhotos, getVideos, uploadPhotos, getVideoUploadToken, deduplicateMedia, getUserMedia } from "../../api/media.js";
+import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem } from "../../api/albums.js";
 import "./GalleryPage.css";
 
 // Module-level cache: survives component remounts
@@ -130,18 +131,17 @@ function VideoPlayer({ item, videoClassName }) {
   const hlsRef    = useRef(null);
 
   const [levels,         setLevels]         = useState([]);
-  const [currentLevel,   setCurrentLevel]   = useState(-1); // -1 = auto
+  const [currentLevel,   setCurrentLevel]   = useState(-1);
   const [audioTracks,    setAudioTracks]    = useState([]);
   const [currentAudio,   setCurrentAudio]   = useState(0);
   const [subtitleTracks, setSubtitleTracks] = useState([]);
-  const [currentSub,     setCurrentSub]     = useState(-1); // -1 = off
+  const [currentSub,     setCurrentSub]     = useState(-1);
 
   useEffect(() => {
     const video = videoRef.current;
     const src   = videoStreamUrl(item);
     if (!video) return;
 
-    // Safari: native HLS — no level/track API available
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = src;
       return;
@@ -241,9 +241,9 @@ function VideoPlayer({ item, videoClassName }) {
 
 // ── Thumbnail components ──────────────────────────────────────────────────────
 
-function PhotoThumb({ item, onClick }) {
+function PhotoThumb({ item, onClick, onContextMenu }) {
   return (
-    <button className="media-thumb" onClick={onClick} title={item.filename}>
+    <button className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
       <img src={photoStreamUrl(item)} alt={item.filename} />
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
@@ -252,15 +252,53 @@ function PhotoThumb({ item, onClick }) {
   );
 }
 
-function VideoThumb({ item, onClick }) {
+function VideoThumb({ item, onClick, onContextMenu }) {
   return (
-    <button className="media-thumb" onClick={onClick} title={item.filename}>
+    <button className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
       <div className="thumb-placeholder thumb-video-bg" />
       <span className="play-badge">▶</span>
       <div className="thumb-overlay">
         <span className="thumb-name">{item.filename}</span>
       </div>
     </button>
+  );
+}
+
+// ── Context Menu ──────────────────────────────────────────────────────────────
+
+function ContextMenu({ x, y, item, albums, userMediaMap, onClose, onAddToAlbum, onCreateAndAdd }) {
+  const userMedia = userMediaMap[item.id];
+
+  return (
+    <div
+      className="context-menu"
+      style={{ left: x, top: y }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {userMedia ? (
+        <>
+          <p className="context-menu-header">Add to album</p>
+          {albums.map((album) => (
+            <button
+              key={album.id}
+              className="context-menu-item"
+              onClick={() => { onAddToAlbum(album.id, userMedia.id); onClose(); }}
+            >
+              📁 {album.name}
+            </button>
+          ))}
+          {albums.length > 0 && <div className="context-menu-divider" />}
+          <button
+            className="context-menu-item context-menu-new"
+            onClick={() => { onCreateAndAdd(item); onClose(); }}
+          >
+            + New album
+          </button>
+        </>
+      ) : (
+        <p className="context-menu-empty">Not in your library</p>
+      )}
+    </div>
   );
 }
 
@@ -342,7 +380,6 @@ function Lightbox({ item, items, onClose, onNavigate }) {
     );
   }
 
-  // Desktop layout
   return (
     <div
       className="lightbox-backdrop"
@@ -398,6 +435,7 @@ export default function GalleryPage() {
   const isAdmin = user?.role === "admin";
   const isMobile = useIsMobile();
 
+  // ── Existing media state ──────────────────────────────────────────────────
   const [filter, setFilter]           = useState("all");
   const [refreshKey, setRefreshKey]   = useState(0);
   const [items, setItems]             = useState([]);
@@ -406,56 +444,93 @@ export default function GalleryPage() {
   const [selected, setSelected]       = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [uploadLoading, setUploadLoading]       = useState(false);
-  const [uploadError, setUploadError]           = useState(null);
+  const [uploadLoading, setUploadLoading]           = useState(false);
+  const [uploadError, setUploadError]               = useState(null);
   const [videoUploadLoading, setVideoUploadLoading] = useState(false);
   const [videoUploadError, setVideoUploadError]     = useState(null);
-  const [dedupeLoading, setDedupeLoading]       = useState(false);
-  const [dedupeMessage, setDedupeMessage]       = useState(null);
+  const [dedupeLoading, setDedupeLoading]           = useState(false);
+  const [dedupeMessage, setDedupeMessage]           = useState(null);
 
-  // ── Desktop pagination ────────────────────────────────────────────────────
-  const mainRef      = useRef(null);
-  const photoInputRef = useRef(null);
-  const videoInputRef = useRef(null);
+  // ── Album / user-media state ──────────────────────────────────────────────
+  const [albums, setAlbums]                       = useState([]);
+  const [albumsLoading, setAlbumsLoading]         = useState(false);
+  const [selectedAlbumId, setSelectedAlbumId]     = useState(null);
+  const [selectedAlbumMediaIds, setSelectedAlbumMediaIds] = useState(null); // Set<mediaId> | null
+  const [userMediaMap, setUserMediaMap]           = useState({}); // mediaId → userMedia record
+  const [adminViewAll, setAdminViewAll]           = useState(true);
+
+  // ── Context menu state ────────────────────────────────────────────────────
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, item }
+
+  // ── Album editing state ───────────────────────────────────────────────────
+  const [creatingAlbum, setCreatingAlbum]     = useState(false);
+  const [newAlbumName, setNewAlbumName]       = useState("");
+  const [renamingAlbumId, setRenamingAlbumId] = useState(null);
+  const [renameValue, setRenameValue]         = useState("");
+  const [albumActionError, setAlbumActionError] = useState(null);
+  const [pendingAlbumItem, setPendingAlbumItem] = useState(null); // item to add after album creation
+
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  const mainRef        = useRef(null);
+  const photoInputRef  = useRef(null);
+  const videoInputRef  = useRef(null);
+  const newAlbumInputRef = useRef(null);
+  const renameInputRef   = useRef(null);
+
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // ── Desktop pagination ────────────────────────────────────────────────────
   const itemsPerPage = useItemsPerPage(mainRef, !isMobile);
   const [currentPage, setCurrentPage] = useState(0);
 
-  useEffect(() => { setCurrentPage(0); }, [filter, refreshKey]);
+  // Apply album + admin view filters on top of type-filtered items
+  const filteredItems = useMemo(() => {
+    let result = items;
+    if (isAdmin && !adminViewAll) {
+      result = result.filter((i) => userMediaMap[i.id]);
+    }
+    if (selectedAlbumMediaIds) {
+      result = result.filter((i) => selectedAlbumMediaIds.has(i.id));
+    }
+    return result;
+  }, [items, isAdmin, adminViewAll, userMediaMap, selectedAlbumMediaIds]);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage));
+  useEffect(() => { setCurrentPage(0); }, [filter, refreshKey, selectedAlbumId, adminViewAll]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
   useEffect(() => { setCurrentPage((p) => Math.min(p, totalPages - 1)); }, [totalPages]);
 
-  const pageItems = items.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
+  const pageItems = filteredItems.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
 
   const handleLightboxNavigate = useCallback((item) => {
     setSelected(item);
-    const idx = items.findIndex((i) => i.filename === item.filename);
+    const idx = filteredItems.findIndex((i) => i.filename === item.filename);
     if (idx !== -1 && !isMobile) setCurrentPage(Math.floor(idx / itemsPerPage));
-  }, [items, itemsPerPage, isMobile]);
+  }, [filteredItems, itemsPerPage, isMobile]);
 
   // ── Mobile infinite scroll ────────────────────────────────────────────────
   const [mobileCount, setMobileCount] = useState(24);
   const sentinelRef = useRef(null);
 
-  useEffect(() => { if (isMobile) setMobileCount(24); }, [filter, refreshKey, isMobile]);
+  useEffect(() => {
+    if (isMobile) setMobileCount(24);
+  }, [filter, refreshKey, isMobile, selectedAlbumId, adminViewAll]);
 
   useEffect(() => {
     if (!isMobile || !sentinelRef.current || !mainRef.current) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) setMobileCount((c) => Math.min(c + 24, items.length));
+        if (entries[0].isIntersecting) setMobileCount((c) => Math.min(c + 24, filteredItems.length));
       },
       { root: mainRef.current, rootMargin: "0px 0px 300px 0px" }
     );
     io.observe(sentinelRef.current);
     return () => io.disconnect();
-  }, [isMobile, mobileCount, items.length]);
+  }, [isMobile, mobileCount, filteredItems.length]);
 
-  const displayItems = isMobile ? items.slice(0, mobileCount) : pageItems;
+  const displayItems = isMobile ? filteredItems.slice(0, mobileCount) : pageItems;
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
+  // ── Data fetching: media ──────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     const cacheWarm = mediaCache.key === refreshKey && mediaCache.photos && mediaCache.videos;
@@ -476,7 +551,6 @@ export default function GalleryPage() {
         );
         if (!mediaCache.videos) fetches.push(
           getVideos().then((r) => {
-            // Normalize: add type + map name→filename for consistent handling
             mediaCache.videos = (r.data.data ?? []).map((v) => ({
               ...v,
               type: "video",
@@ -511,7 +585,124 @@ export default function GalleryPage() {
     return () => { cancelled = true; };
   }, [filter, refreshKey]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // ── Data fetching: user-media map ─────────────────────────────────────────
+  useEffect(() => {
+    getUserMedia()
+      .then((r) => {
+        const map = {};
+        (r.data ?? []).forEach((um) => { map[um.mediaId] = um; });
+        setUserMediaMap(map);
+      })
+      .catch(() => {});
+  }, [refreshKey]);
+
+  // ── Data fetching: albums ─────────────────────────────────────────────────
+  const refreshAlbums = useCallback(async () => {
+    setAlbumsLoading(true);
+    try {
+      const r = await getAlbums();
+      setAlbums(r.data ?? []);
+    } catch {
+      setAlbums([]);
+    } finally {
+      setAlbumsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refreshAlbums(); }, [refreshAlbums]);
+
+  // ── Data fetching: selected album items ───────────────────────────────────
+  useEffect(() => {
+    if (!selectedAlbumId) { setSelectedAlbumMediaIds(null); return; }
+    getAlbum(selectedAlbumId)
+      .then((r) => {
+        const mediaIds = new Set(
+          (r.data.items ?? []).map((ai) => ai.userMedia?.mediaId).filter(Boolean)
+        );
+        setSelectedAlbumMediaIds(mediaIds);
+      })
+      .catch(() => setSelectedAlbumMediaIds(new Set()));
+  }, [selectedAlbumId]);
+
+  // ── Focus helpers ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (creatingAlbum) setTimeout(() => newAlbumInputRef.current?.focus(), 50);
+  }, [creatingAlbum]);
+
+  useEffect(() => {
+    if (renamingAlbumId) setTimeout(() => renameInputRef.current?.focus(), 50);
+  }, [renamingAlbumId]);
+
+  // ── Close context menu on outside click ───────────────────────────────────
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleDown = () => setContextMenu(null);
+    document.addEventListener("mousedown", handleDown);
+    return () => document.removeEventListener("mousedown", handleDown);
+  }, [contextMenu]);
+
+  // ── Album handlers ────────────────────────────────────────────────────────
+  const handleCreateAlbum = async () => {
+    const name = newAlbumName.trim();
+    if (!name) return;
+    setAlbumActionError(null);
+    try {
+      const res = await createAlbum(name);
+      const newAlbum = res.data;
+      if (pendingAlbumItem) {
+        const um = userMediaMap[pendingAlbumItem.id];
+        if (um) await addAlbumItem(newAlbum.id, um.id);
+        setPendingAlbumItem(null);
+      }
+      setNewAlbumName("");
+      setCreatingAlbum(false);
+      await refreshAlbums();
+    } catch (err) {
+      setAlbumActionError(err.message ?? "Failed to create album");
+    }
+  };
+
+  const handleRenameAlbum = async (albumId) => {
+    const name = renameValue.trim();
+    setRenamingAlbumId(null);
+    if (!name) return;
+    try {
+      await patchAlbum(albumId, { name });
+      await refreshAlbums();
+    } catch (err) {
+      setAlbumActionError(err.message ?? "Failed to rename album");
+    }
+  };
+
+  const handleAddToAlbum = async (albumId, userMediaId) => {
+    try {
+      await addAlbumItem(albumId, userMediaId);
+      if (selectedAlbumId === albumId) {
+        const r = await getAlbum(albumId);
+        const mediaIds = new Set(
+          (r.data.items ?? []).map((ai) => ai.userMedia?.mediaId).filter(Boolean)
+        );
+        setSelectedAlbumMediaIds(mediaIds);
+      }
+      await refreshAlbums(); // refresh counts
+    } catch (err) {
+      console.error("Failed to add to album:", err);
+    }
+  };
+
+  const handleContextMenu = useCallback((e, item) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, item });
+  }, []);
+
+  const handleCreateAndAdd = useCallback((item) => {
+    setPendingAlbumItem(item);
+    setNewAlbumName("");
+    setCreatingAlbum(true);
+    setSidebarOpen(true);
+  }, []);
+
+  // ── Existing upload handlers ──────────────────────────────────────────────
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
@@ -593,12 +784,10 @@ export default function GalleryPage() {
 
       <div className="gallery-layout">
 
-        {/* ── Mobile sidebar backdrop ───────────────────────── */}
         {sidebarOpen && (
           <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
         )}
 
-        {/* ── Sidebar / bottom sheet ────────────────────────── */}
         <aside className={`gallery-sidebar${sidebarOpen ? " sidebar-open" : ""}`}>
           {/* Sheet drag handle + header (mobile only) */}
           <div className="sidebar-sheet-header">
@@ -613,15 +802,29 @@ export default function GalleryPage() {
             </div>
           </div>
 
-          {/* Desktop-only standalone title */}
           <p className="sidebar-title sidebar-title-desktop">Filter</p>
 
+          {/* Admin: All Media / My Media toggle */}
+          {isAdmin && (
+            <div className="admin-view-toggle">
+              <button
+                className={`view-toggle-btn${adminViewAll ? " active" : ""}`}
+                onClick={() => { setAdminViewAll(true); }}
+              >All</button>
+              <button
+                className={`view-toggle-btn${!adminViewAll ? " active" : ""}`}
+                onClick={() => setAdminViewAll(false)}
+              >Mine</button>
+            </div>
+          )}
+
+          {/* Type filter nav */}
           <nav className="sidebar-nav">
             {FILTERS.map((f) => (
               <button
                 key={f.id}
-                className={`sidebar-btn${filter === f.id ? " active" : ""}`}
-                onClick={() => { setFilter(f.id); setSidebarOpen(false); }}
+                className={`sidebar-btn${filter === f.id && !selectedAlbumId ? " active" : ""}`}
+                onClick={() => { setFilter(f.id); setSelectedAlbumId(null); setSidebarOpen(false); }}
               >
                 <span className="sidebar-btn-icon">{f.icon}</span>
                 {f.label}
@@ -631,15 +834,104 @@ export default function GalleryPage() {
 
           {!loading && !error && (
             <p className="sidebar-count">
-              {items.length} item{items.length !== 1 ? "s" : ""}
+              {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
             </p>
           )}
 
+          {/* Albums section */}
+          <div className="albums-section">
+            <div className="albums-header">
+              <p className="sidebar-title albums-title">Albums</p>
+              <button
+                className="album-create-btn"
+                onClick={() => { setPendingAlbumItem(null); setNewAlbumName(""); setCreatingAlbum(true); }}
+                title="New album"
+                aria-label="New album"
+              >+</button>
+            </div>
+
+            {albumsLoading && <p className="sidebar-count">Loading…</p>}
+
+            {!albumsLoading && albums.length === 0 && !creatingAlbum && (
+              <p className="sidebar-count">No albums yet</p>
+            )}
+
+            <nav className="sidebar-nav">
+              {albums.map((album) => (
+                <div key={album.id} className="album-item">
+                  {renamingAlbumId === album.id ? (
+                    <input
+                      ref={renameInputRef}
+                      className="album-rename-input"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => handleRenameAlbum(album.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRenameAlbum(album.id);
+                        if (e.key === "Escape") setRenamingAlbumId(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      className={`sidebar-btn album-btn${selectedAlbumId === album.id ? " active" : ""}`}
+                      onClick={() => {
+                        setSelectedAlbumId(selectedAlbumId === album.id ? null : album.id);
+                        setSidebarOpen(false);
+                      }}
+                      onDoubleClick={() => {
+                        setRenamingAlbumId(album.id);
+                        setRenameValue(album.name);
+                      }}
+                      title="Click to filter · Double-click to rename"
+                    >
+                      <span className="sidebar-btn-icon">📁</span>
+                      <span className="album-btn-name">{album.name}</span>
+                      <span className="album-count">{album._count?.items ?? 0}</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </nav>
+
+            {/* Inline album creation */}
+            {creatingAlbum && (
+              <div className="album-create-row">
+                <input
+                  ref={newAlbumInputRef}
+                  className="album-rename-input"
+                  placeholder="Album name…"
+                  value={newAlbumName}
+                  onChange={(e) => setNewAlbumName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateAlbum();
+                    if (e.key === "Escape") {
+                      setCreatingAlbum(false);
+                      setPendingAlbumItem(null);
+                      setNewAlbumName("");
+                    }
+                  }}
+                />
+                <div className="album-create-actions">
+                  <button className="album-action-btn" onClick={handleCreateAlbum} aria-label="Confirm">✓</button>
+                  <button
+                    className="album-action-btn"
+                    onClick={() => { setCreatingAlbum(false); setPendingAlbumItem(null); setNewAlbumName(""); }}
+                    aria-label="Cancel"
+                  >✕</button>
+                </div>
+              </div>
+            )}
+
+            {albumActionError && (
+              <p className="admin-msg error">{albumActionError}</p>
+            )}
+          </div>
+
+          {/* Admin section */}
           {isAdmin && (
             <div className="admin-section">
               <p className="sidebar-title">Admin</p>
 
-              {/* Photo upload */}
               <input
                 ref={photoInputRef}
                 type="file"
@@ -658,7 +950,6 @@ export default function GalleryPage() {
               </button>
               {uploadError && <p className="admin-msg error">{uploadError}</p>}
 
-              {/* Video upload */}
               <input
                 ref={videoInputRef}
                 type="file"
@@ -676,7 +967,6 @@ export default function GalleryPage() {
               </button>
               {videoUploadError && <p className="admin-msg error">{videoUploadError}</p>}
 
-              {/* Deduplicate */}
               <button
                 className="admin-btn dedupe-btn"
                 onClick={handleDeduplicate}
@@ -693,11 +983,16 @@ export default function GalleryPage() {
         {/* ── Main content ──────────────────────────────────── */}
         <main className="gallery-main" ref={mainRef}>
 
-          {/* Mobile top bar: filter toggle */}
           <div className="mobile-topbar">
             <button className="mobile-filter-btn" onClick={() => setSidebarOpen(true)}>
-              <span className="sidebar-btn-icon">{activeFilter?.icon}</span>
-              {activeFilter?.label}
+              <span className="sidebar-btn-icon">
+                {selectedAlbumId
+                  ? "📁"
+                  : activeFilter?.icon}
+              </span>
+              {selectedAlbumId
+                ? (albums.find((a) => a.id === selectedAlbumId)?.name ?? "Album")
+                : activeFilter?.label}
               <span className="mobile-filter-chevron">↑</span>
             </button>
           </div>
@@ -715,25 +1010,36 @@ export default function GalleryPage() {
             </div>
           )}
 
-          {!loading && !error && items.length === 0 && (
+          {!loading && !error && filteredItems.length === 0 && (
             <div className="gallery-status">
-              <p className="gallery-empty">No media found.</p>
+              <p className="gallery-empty">
+                {selectedAlbumId ? "This album is empty." : "No media found."}
+              </p>
             </div>
           )}
 
-          {!loading && !error && items.length > 0 && (
+          {!loading && !error && filteredItems.length > 0 && (
             <>
               <div className="media-grid">
                 {displayItems.map((item) =>
                   item.type === "photo" ? (
-                    <PhotoThumb key={item.id} item={item} onClick={() => setSelected(item)} />
+                    <PhotoThumb
+                      key={item.id}
+                      item={item}
+                      onClick={() => setSelected(item)}
+                      onContextMenu={(e) => handleContextMenu(e, item)}
+                    />
                   ) : (
-                    <VideoThumb key={item.id} item={item} onClick={() => setSelected(item)} />
+                    <VideoThumb
+                      key={item.id}
+                      item={item}
+                      onClick={() => setSelected(item)}
+                      onContextMenu={(e) => handleContextMenu(e, item)}
+                    />
                   )
                 )}
               </div>
 
-              {/* Desktop: pagination */}
               {!isMobile && (
                 <Pagination
                   currentPage={currentPage}
@@ -742,8 +1048,7 @@ export default function GalleryPage() {
                 />
               )}
 
-              {/* Mobile: infinite scroll sentinel */}
-              {isMobile && mobileCount < items.length && (
+              {isMobile && mobileCount < filteredItems.length && (
                 <div ref={sentinelRef} className="scroll-sentinel">
                   <div className="spinner" />
                 </div>
@@ -756,9 +1061,22 @@ export default function GalleryPage() {
       {selected && (
         <Lightbox
           item={selected}
-          items={items}
+          items={filteredItems}
           onClose={() => setSelected(null)}
           onNavigate={handleLightboxNavigate}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          item={contextMenu.item}
+          albums={albums}
+          userMediaMap={userMediaMap}
+          onClose={() => setContextMenu(null)}
+          onAddToAlbum={handleAddToAlbum}
+          onCreateAndAdd={handleCreateAndAdd}
         />
       )}
     </div>
