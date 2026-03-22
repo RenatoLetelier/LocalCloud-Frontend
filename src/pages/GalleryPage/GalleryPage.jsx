@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotos, getVideoUploadToken, deduplicateMedia, getUserMedia } from "../../api/media.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia } from "../../api/media.js";
 import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem } from "../../api/albums.js";
+import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
 import "./GalleryPage.css";
 
 // Module-level cache: survives component remounts
@@ -511,8 +512,7 @@ export default function GalleryPage() {
   const [selected, setSelected]       = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [uploadLoading, setUploadLoading]           = useState(false);
-  const [uploadError, setUploadError]               = useState(null);
+  const [uploadQueue, setUploadQueue]               = useState([]); // per-file progress queue
   const [videoUploadLoading, setVideoUploadLoading] = useState(false);
   const [videoUploadError, setVideoUploadError]     = useState(null);
   const [dedupeLoading, setDedupeLoading]           = useState(false);
@@ -807,24 +807,67 @@ export default function GalleryPage() {
     setSidebarOpen(true);
   }, []);
 
-  // ── Existing upload handlers ──────────────────────────────────────────────
-  const handlePhotoUpload = async (e) => {
+  // ── Upload handlers ───────────────────────────────────────────────────────
+  const clearUploadQueue = useCallback(() => {
+    setUploadQueue((prev) => {
+      // Revoke any object URLs we created for thumbnails
+      prev.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
+      return [];
+    });
+  }, []);
+
+  const handlePhotoUpload = useCallback(async (e) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
-    setUploadLoading(true);
-    setUploadError(null);
-    try {
-      const formData = new FormData();
-      files.forEach((f) => formData.append("files", f));
-      await uploadPhotos(formData);
-      refresh();
-    } catch (err) {
-      setUploadError(err.message ?? "Upload failed");
-    } finally {
-      setUploadLoading(false);
-      e.target.value = "";
-    }
-  };
+    e.target.value = ""; // reset input so re-selecting the same files works
+
+    // Build the initial queue (all "queued", with image previews where possible)
+    const queue = files.map((file) => ({
+      id:       `${Date.now()}-${Math.random()}`,
+      file,
+      preview:  file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+      progress: 0,
+      status:   "queued",
+      error:    null,
+    }));
+    setUploadQueue(queue);
+
+    // Upload up to 3 files in parallel.
+    // Each "chain" calls uploadNext() recursively, grabbing the next
+    // unstarted file via the shared `idx` counter (safe: JS is single-threaded).
+    let idx = 0;
+    const uploadNext = async () => {
+      if (idx >= queue.length) return;
+      const item = queue[idx++];
+
+      setUploadQueue((prev) =>
+        prev.map((q) => q.id === item.id ? { ...q, status: "uploading" } : q)
+      );
+
+      try {
+        await uploadPhotoFile(item.file, (pct) =>
+          setUploadQueue((prev) =>
+            prev.map((q) => q.id === item.id ? { ...q, progress: pct } : q)
+          )
+        );
+        setUploadQueue((prev) =>
+          prev.map((q) => q.id === item.id ? { ...q, status: "done", progress: 100 } : q)
+        );
+      } catch (err) {
+        setUploadQueue((prev) =>
+          prev.map((q) =>
+            q.id === item.id ? { ...q, status: "error", error: err.message ?? "Failed" } : q
+          )
+        );
+      }
+
+      await uploadNext(); // pick up the next queued file in this chain
+    };
+
+    const CONCURRENCY = 3;
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, uploadNext));
+    refresh();
+  }, [refresh]);
 
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -946,6 +989,23 @@ export default function GalleryPage() {
             </p>
           )}
 
+          {/* Upload button — visible to every user */}
+          <input
+            ref={photoInputRef}
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
+            style={{ display: "none" }}
+            onChange={handlePhotoUpload}
+          />
+          <button
+            className="sidebar-btn upload-photos-btn"
+            onClick={() => { photoInputRef.current?.click(); setSidebarOpen(false); }}
+          >
+            <span className="sidebar-btn-icon">⬆</span>
+            Upload Photos
+          </button>
+
           {/* Albums section */}
           <div className="albums-section">
             <div className="albums-header">
@@ -1044,23 +1104,6 @@ export default function GalleryPage() {
             <div className="admin-section">
               <p className="sidebar-title">Admin</p>
 
-              <input
-                ref={photoInputRef}
-                type="file"
-                multiple
-                accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
-                style={{ display: "none" }}
-                onChange={handlePhotoUpload}
-              />
-              <button
-                className="admin-btn upload-btn"
-                onClick={() => { photoInputRef.current?.click(); setSidebarOpen(false); }}
-                disabled={uploadLoading}
-              >
-                <span>🖼</span>
-                {uploadLoading ? "Uploading…" : "Upload Photos"}
-              </button>
-              {uploadError && <p className="admin-msg error">{uploadError}</p>}
 
               <input
                 ref={videoInputRef}
@@ -1112,6 +1155,12 @@ export default function GalleryPage() {
                 : activeFilter?.label}
               <span className="mobile-filter-chevron">↑</span>
             </button>
+            <button
+              className="mobile-upload-btn"
+              onClick={() => photoInputRef.current?.click()}
+              title="Upload photos"
+              aria-label="Upload photos"
+            >⬆</button>
           </div>
 
           {loading && (
@@ -1196,6 +1245,9 @@ export default function GalleryPage() {
           onCreateAndAdd={handleCreateAndAdd}
         />
       )}
+
+      {/* Per-file upload progress panel */}
+      <UploadQueue queue={uploadQueue} onDismiss={clearUploadQueue} />
     </div>
   );
 }
