@@ -31,7 +31,9 @@ export default function Header() {
       <div className="settings-section">
         <ThemeButtonComponent />
         <div className="profile-section" ref={profileRef} onClick={handleOpen}>
-          {user?.username && <span className="header-username">{user.username}</span>}
+          {(user?.username || user?.email) && (
+            <span className="header-username">{user.username || user.email}</span>
+          )}
           <ArrowDownIcon size={20} />
           <ProfileIcon />
         </div>

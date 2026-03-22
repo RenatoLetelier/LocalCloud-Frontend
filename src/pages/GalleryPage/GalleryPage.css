@@ -16,6 +16,7 @@
 
 /* ── Sidebar ───────────────────────────────────────────── */
 .gallery-sidebar {
+  /* width set via inline style on desktop; 200px is the CSS fallback */
   width: 200px;
   flex-shrink: 0;
   display: flex;
@@ -25,6 +26,29 @@
   background-color: var(--surface-1);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+}
+
+/* ── Sidebar resize handle (desktop only) ──────────────── */
+.sidebar-resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s;
+  position: relative;
+  z-index: 10;
+  /* Widen the hit area without affecting layout */
+}
+
+.sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px; /* 4px extra on each side for easier grabbing */
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background-color: var(--primary);
 }
 
 .sidebar-sheet-header {
