@@ -16,4 +16,5 @@ export const uploadPhotoFile = (file, onProgress) => {
 };
 export const getVideoUploadToken = () => api.get("/api/videos/upload-token");
 export const deduplicateMedia = () => api.post("/api/media/deduplicate");
-export const getUserMedia = () => api.get("/api/user-media");
+export const getUserMedia     = ()     => api.get("/api/user-media");
+export const createUserMedia  = (data) => api.post("/api/user-media", data);
