@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia } from "../../api/media.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia } from "../../api/media.js";
 import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem } from "../../api/albums.js";
 import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
 import "./GalleryPage.css";
@@ -845,11 +845,26 @@ export default function GalleryPage() {
       );
 
       try {
-        await uploadPhotoFile(item.file, (pct) =>
+        // Step 1 — upload the file; response contains the new mediaId
+        const res = await uploadPhotoFile(item.file, (pct) =>
           setUploadQueue((prev) =>
             prev.map((q) => q.id === item.id ? { ...q, progress: pct } : q)
           )
         );
+
+        // Step 2 — auto-assign the uploaded photo to the uploader.
+        // The media API may return the id at different paths; try the most common ones.
+        const data   = res.data ?? {};
+        const mediaId =
+          data.files?.[0]?.id ??  // { files: [{ id }] }
+          data.file?.id       ??  // { file: { id } }
+          data[0]?.id         ??  // [{ id }]
+          data.id;                // { id }
+
+        if (mediaId && user?.id) {
+          await createUserMedia({ userId: user.id, mediaId, mediaType: "photo" });
+        }
+
         setUploadQueue((prev) =>
           prev.map((q) => q.id === item.id ? { ...q, status: "done", progress: 100 } : q)
         );
@@ -867,7 +882,7 @@ export default function GalleryPage() {
     const CONCURRENCY = 3;
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, uploadNext));
     refresh();
-  }, [refresh]);
+  }, [refresh, user]);
 
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0];
