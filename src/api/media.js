@@ -1,8 +1,13 @@
 import api from "./axiosInstance.js";
 
-export const getPhotos = () => api.get("/api/photos?sort=mtime&order=desc&limit=100");
-export const getVideos = () => api.get("/api/videos?sort=mtime&order=desc&limit=100");
+export const getPhotos  = (page = 1, limit = 100) => api.get(`/api/photos?page=${page}&limit=${limit}`);
+export const getVideos  = (page = 1, limit = 100) => api.get(`/api/videos?page=${page}&limit=${limit}`);
 export const uploadPhotos = (formData) => api.post("/api/media/upload", formData);
+
+/** Update a photo's metadata fields. `filename` is the media-server filename. */
+export const patchPhoto = (filename, data) => api.patch(`/api/photos/${filename}`, data);
+/** Update a video's metadata fields. `filename` must be inside `data`. */
+export const patchVideo = (data)           => api.patch("/api/videos", data);
 
 /** Upload a single file with per-byte progress. `onProgress(0‥100)` is called as bytes arrive. */
 export const uploadPhotoFile = (file, onProgress) => {
