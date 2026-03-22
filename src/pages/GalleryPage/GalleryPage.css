@@ -1248,3 +1248,204 @@
   background: rgba(255,255,255,0.2);
   color: #fff;
 }
+
+/* ── Lightbox active (Details toggled) button ───────────── */
+.lb-btn-active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.lb-btn-active:hover {
+  filter: brightness(1.1);
+}
+
+/* ── Lightbox layout when meta panel is open (desktop) ──── */
+.lightbox-body {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+  min-width: 0;
+  flex: 1;
+}
+
+.lightbox-content--with-meta {
+  max-width: min(95vw, 1200px);
+}
+
+.lightbox-content--with-meta .lightbox-media {
+  max-width: 60vw;
+  max-height: 75vh;
+}
+
+.lightbox-meta-panel {
+  width: 300px;
+  flex-shrink: 0;
+  max-height: 75vh;
+  overflow-y: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  scrollbar-width: thin;
+}
+
+/* Mobile: meta panel stacks below actions */
+.lightbox-mobile .lightbox-meta-panel {
+  width: 100%;
+  max-height: 40vh;
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  margin-top: 8px;
+}
+
+/* ── MetaPanel ───────────────────────────────────────────── */
+.meta-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, rgba(255,255,255,0.45));
+}
+
+.meta-value {
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.meta-empty {
+  color: var(--text-muted, rgba(255,255,255,0.3));
+  font-style: normal;
+}
+
+.meta-edit-btn {
+  margin-top: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-1);
+  font-size: 12px;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background 0.12s, border-color 0.12s;
+}
+.meta-edit-btn:hover {
+  background: var(--surface-2, rgba(255,255,255,.06));
+  border-color: var(--primary);
+}
+
+/* ── MetaPanel editing form ──────────────────────────────── */
+.meta-panel--editing {
+  gap: 10px;
+}
+
+.meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.meta-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+.meta-input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2, rgba(255,255,255,.05));
+  color: var(--text-1);
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.meta-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.meta-textarea {
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.meta-select {
+  cursor: pointer;
+}
+
+.meta-field-row {
+  display: flex;
+  gap: 6px;
+}
+.meta-field-row .meta-input {
+  flex: 1;
+}
+
+.meta-error {
+  font-size: 12px;
+  color: var(--error, #e05252);
+  margin: 0;
+}
+
+.meta-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.meta-save-btn {
+  flex: 1;
+  padding: 7px 12px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+.meta-save-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.meta-save-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.meta-cancel-btn {
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.meta-cancel-btn:hover { background: var(--surface-2, rgba(255,255,255,.06)); }

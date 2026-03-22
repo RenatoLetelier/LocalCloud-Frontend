@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import Hls from "hls.js";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
-import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deleteVideo } from "../../api/media.js";
+import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deleteVideo, patchPhoto, patchVideo } from "../../api/media.js";
 import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem, removeAlbumItem } from "../../api/albums.js";
 import { getUsers } from "../../api/users.js";
 import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
@@ -32,13 +31,15 @@ function mediaIdMatchesDupFile(mediaId, dupFile) {
   );
 }
 
-function photoStreamUrl(item) {
-  return `${API_BASE}/api/photos/${item.id}/stream`;
+/** Unified stream URL for both photos and videos — uses the new /api/media/file/:filename endpoint */
+function mediaFileUrl(item) {
+  const name = item.filename || item.id;
+  return `${API_BASE}/api/media/file/${encodeURIComponent(name)}`;
 }
 
-function videoStreamUrl(item) {
-  return `${API_BASE}/api/videos/${item.id}/stream/master.m3u8`;
-}
+// Keep named aliases used throughout the file
+const photoStreamUrl = mediaFileUrl;
+const videoStreamUrl = mediaFileUrl;
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -145,117 +146,22 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ── HLS Video player with quality / audio / subtitle controls ────────────────
+// ── Video player — direct streaming with native Range-request support ─────────
+// The backend now serves raw video files via GET /api/media/file/:filename with
+// proper Content-Range forwarding, so the browser's built-in <video> handles
+// seeking and buffering without a separate HLS layer.
 
 function VideoPlayer({ item, videoClassName }) {
-  const videoRef  = useRef(null);
-  const hlsRef    = useRef(null);
-
-  const [levels,         setLevels]         = useState([]);
-  const [currentLevel,   setCurrentLevel]   = useState(-1);
-  const [audioTracks,    setAudioTracks]    = useState([]);
-  const [currentAudio,   setCurrentAudio]   = useState(0);
-  const [subtitleTracks, setSubtitleTracks] = useState([]);
-  const [currentSub,     setCurrentSub]     = useState(-1);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    const src   = videoStreamUrl(item);
-    if (!video) return;
-
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = src;
-      return;
-    }
-
-    if (!Hls.isSupported()) return;
-
-    const hls = new Hls();
-    hlsRef.current = hls;
-    hls.loadSource(src);
-    hls.attachMedia(video);
-
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      setLevels(hls.levels);
-      setAudioTracks(hls.audioTracks);
-      setSubtitleTracks(hls.subtitleTracks);
-      setCurrentLevel(hls.currentLevel);
-      setCurrentAudio(hls.audioTrack);
-      setCurrentSub(hls.subtitleTrack);
-    });
-
-    return () => { hls.destroy(); hlsRef.current = null; };
-  }, [item]);
-
-  const changeQuality = (level) => {
-    if (hlsRef.current) { hlsRef.current.currentLevel = level; setCurrentLevel(level); }
-  };
-  const changeAudio = (track) => {
-    if (hlsRef.current) { hlsRef.current.audioTrack = track; setCurrentAudio(track); }
-  };
-  const changeSub = (track) => {
-    if (hlsRef.current) { hlsRef.current.subtitleTrack = track; setCurrentSub(track); }
-  };
-
-  const hasControls = levels.length > 1 || audioTracks.length > 1 || subtitleTracks.length > 0;
-
   return (
     <div className="video-player-wrap" onClick={(e) => e.stopPropagation()}>
       <video
-        ref={videoRef}
+        key={item.filename || item.id}   // remount when item changes so src reloads
         className={videoClassName}
+        src={videoStreamUrl(item)}
         controls
         autoPlay
         playsInline
       />
-      {hasControls && (
-        <div className="video-controls-bar">
-          {levels.length > 1 && (
-            <div className="video-control-group">
-              <span className="video-control-label">Quality</span>
-              <select
-                className="video-control-select"
-                value={currentLevel}
-                onChange={(e) => changeQuality(Number(e.target.value))}
-              >
-                <option value={-1}>Auto</option>
-                {levels.map((l, i) => (
-                  <option key={i} value={i}>{l.height ? `${l.height}p` : `Level ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {audioTracks.length > 1 && (
-            <div className="video-control-group">
-              <span className="video-control-label">Audio</span>
-              <select
-                className="video-control-select"
-                value={currentAudio}
-                onChange={(e) => changeAudio(Number(e.target.value))}
-              >
-                {audioTracks.map((t, i) => (
-                  <option key={i} value={i}>{t.name || t.lang || `Track ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {subtitleTracks.length > 0 && (
-            <div className="video-control-group">
-              <span className="video-control-label">Subtitles</span>
-              <select
-                className="video-control-select"
-                value={currentSub}
-                onChange={(e) => changeSub(Number(e.target.value))}
-              >
-                <option value={-1}>Off</option>
-                {subtitleTracks.map((t, i) => (
-                  <option key={i} value={i}>{t.name || t.lang || `Sub ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -281,61 +187,38 @@ function VideoThumb({ item, onClick, onContextMenu }) {
     const el = wrapRef.current;
     if (!el) return;
     let cancelled = false;
-    let hlsInst = null;
 
     const io = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting) return;
       io.disconnect();
 
       const vid = document.createElement("video");
-      vid.muted = true;
+      vid.muted       = true;
       vid.playsInline = true;
       vid.crossOrigin = "anonymous";
+      vid.preload     = "metadata";
+      vid.src         = videoStreamUrl(item);
 
       const captureFrame = () => {
         if (cancelled) return;
         try {
-          const c = document.createElement("canvas");
+          const c  = document.createElement("canvas");
           c.width  = vid.videoWidth  || 320;
           c.height = vid.videoHeight || 180;
           c.getContext("2d").drawImage(vid, 0, 0, c.width, c.height);
           if (!cancelled) setThumbSrc(c.toDataURL("image/jpeg", 0.7));
         } catch (_) { /* tainted canvas — keep placeholder */ }
-        hlsInst?.destroy();
-        hlsInst = null;
       };
 
-      vid.addEventListener("seeked", captureFrame, { once: true });
-
-      const src = videoStreamUrl(item);
-
-      if (vid.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari — native HLS
-        vid.src = src;
-        vid.addEventListener("loadedmetadata", () => {
-          vid.currentTime = Math.min(1, vid.duration || 1);
-        }, { once: true });
-      } else if (Hls.isSupported()) {
-        hlsInst = new Hls({ maxBufferLength: 10 });
-        hlsInst.loadSource(src);
-        hlsInst.attachMedia(vid);
-        // Wait for first video fragment to be buffered before seeking
-        let grabbed = false;
-        hlsInst.on(Hls.Events.FRAG_BUFFERED, (_, data) => {
-          if (grabbed || data.frag.type !== "main") return;
-          grabbed = true;
-          vid.currentTime = 0.001;
-        });
-      }
+      vid.addEventListener("seeked",           captureFrame,   { once: true });
+      vid.addEventListener("loadedmetadata", () => {
+        vid.currentTime = Math.min(1, vid.duration || 1);
+      }, { once: true });
     }, { rootMargin: "400px 0px" });
 
     io.observe(el);
 
-    return () => {
-      cancelled = true;
-      io.disconnect();
-      hlsInst?.destroy();
-    };
+    return () => { cancelled = true; io.disconnect(); };
   }, [item]);
 
   return (
@@ -349,6 +232,143 @@ function VideoThumb({ item, onClick, onContextMenu }) {
         <span className="thumb-name">{item.filename}</span>
       </div>
     </button>
+  );
+}
+
+// ── MetaPanel — shows / edits media metadata inside the lightbox ─────────────
+
+function MetaPanel({ item, isAdmin, onSave }) {
+  const [editing,   setEditing]   = useState(false);
+  const [saving,    setSaving]    = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const blankForm = (it) => ({
+    name:          it.name         ?? it.filename ?? "",
+    description:   it.description  ?? "",
+    tags:          (it.tags        ?? []).join(", "),
+    visibility:    it.visibility   ?? "private",
+    lat:           it.metadata?.location?.lat   ?? "",
+    lng:           it.metadata?.location?.lng   ?? "",
+    locationLabel: it.metadata?.location?.label ?? "",
+    people:        (it.metadata?.people ?? []).join(", "),
+  });
+
+  const [form, setForm] = useState(() => blankForm(item));
+
+  // Sync when navigating to a different item
+  useEffect(() => {
+    setForm(blankForm(item));
+    setEditing(false);
+    setSaveError(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.filename]);
+
+  const patch = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const tags   = form.tags  .split(",").map((t) => t.trim()).filter(Boolean);
+      const people = form.people.split(",").map((p) => p.trim()).filter(Boolean);
+
+      const hasLocation = form.lat !== "" || form.lng !== "" || form.locationLabel !== "";
+      const data = {
+        name:        form.name        || undefined,
+        description: form.description || undefined,
+        tags,
+        visibility:  form.visibility,
+        metadata: {
+          ...(hasLocation ? {
+            location: {
+              ...(form.lat           !== "" && { lat:   parseFloat(form.lat) }),
+              ...(form.lng           !== "" && { lng:   parseFloat(form.lng) }),
+              ...(form.locationLabel !== "" && { label: form.locationLabel }),
+            },
+          } : {}),
+          people,
+        },
+      };
+      await onSave(item, data);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err.message ?? "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const Row = ({ label, value }) => (
+    <div className="meta-row">
+      <span className="meta-label">{label}</span>
+      <span className="meta-value">{value || <em className="meta-empty">—</em>}</span>
+    </div>
+  );
+
+  const locationDisplay =
+    item.metadata?.location?.label ||
+    (item.metadata?.location?.lat != null
+      ? `${item.metadata.location.lat}, ${item.metadata.location.lng}`
+      : null);
+
+  if (!editing) {
+    return (
+      <div className="meta-panel">
+        <Row label="Name"        value={item.name ?? item.filename} />
+        <Row label="Description" value={item.description} />
+        <Row label="Tags"        value={item.tags?.join(", ")} />
+        <Row label="Visibility"  value={item.visibility} />
+        <Row label="Location"    value={locationDisplay} />
+        <Row label="People"      value={item.metadata?.people?.join(", ")} />
+        {item.metadata?.width  && <Row label="Dimensions" value={`${item.metadata.width} × ${item.metadata.height}`} />}
+        {item.metadata?.size   && <Row label="Size"       value={formatSize(item.metadata.size)} />}
+        {item.metadata?.type   && <Row label="Type"       value={item.metadata.type} />}
+        {isAdmin && (
+          <button className="meta-edit-btn" onClick={() => setEditing(true)}>✏ Edit metadata</button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="meta-panel meta-panel--editing">
+      <div className="meta-field">
+        <label className="meta-field-label">Name</label>
+        <input className="meta-input" value={form.name} onChange={patch("name")} />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Description</label>
+        <textarea className="meta-input meta-textarea" rows={3} value={form.description} onChange={patch("description")} />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Tags <span className="meta-hint">(comma separated)</span></label>
+        <input className="meta-input" value={form.tags} onChange={patch("tags")} placeholder="nature, beach, night" />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Visibility</label>
+        <select className="meta-input meta-select" value={form.visibility} onChange={patch("visibility")}>
+          <option value="private">Private</option>
+          <option value="public">Public</option>
+        </select>
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">Location</label>
+        <div className="meta-field-row">
+          <input className="meta-input" placeholder="Lat"  type="number" step="any" value={form.lat} onChange={patch("lat")} />
+          <input className="meta-input" placeholder="Lng"  type="number" step="any" value={form.lng} onChange={patch("lng")} />
+        </div>
+        <input className="meta-input" placeholder="Label (e.g. Paris, France)" value={form.locationLabel} onChange={patch("locationLabel")} />
+      </div>
+      <div className="meta-field">
+        <label className="meta-field-label">People <span className="meta-hint">(comma separated)</span></label>
+        <input className="meta-input" value={form.people} onChange={patch("people")} placeholder="Alice, Bob" />
+      </div>
+      {saveError && <p className="meta-error">{saveError}</p>}
+      <div className="meta-edit-actions">
+        <button className="meta-save-btn"   onClick={handleSave}           disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+        <button className="meta-cancel-btn" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
   );
 }
 
@@ -529,12 +549,14 @@ function Lightbox({
   item, items, onClose, onNavigate,
   userMediaMap, selectedAlbumId, isAdmin,
   onRemoveFromAlbum, onRemoveFromLibrary, onDeletePermanently, onAssignToUser,
+  onSaveMeta,
 }) {
   const isMobile     = useIsMobile();
   const currentIndex = items.findIndex((i) => i.filename === item.filename);
   const hasPrev      = currentIndex > 0;
   const hasNext      = currentIndex < items.length - 1;
   const touchStartX  = useRef(null);
+  const [showMeta,   setShowMeta] = useState(false);
 
   // Lookup this item's user-media record (determines which actions are available)
   const userMedia = userMediaMap?.[item.id] ?? null;
@@ -542,6 +564,13 @@ function Lightbox({
   // Shared action bar rendered inside both desktop and mobile lightbox
   const actionBar = (
     <div className="lb-actions">
+      <button
+        className={`lb-btn${showMeta ? " lb-btn-active" : ""}`}
+        onClick={() => setShowMeta((v) => !v)}
+        title="Toggle metadata panel"
+      >
+        ℹ Details
+      </button>
       {userMedia && selectedAlbumId && (
         <button className="lb-btn lb-btn-danger"
           onClick={() => { onRemoveFromAlbum(item, userMedia); onClose(); }}>
@@ -633,6 +662,11 @@ function Lightbox({
           </span>
         </div>
         {actionBar}
+        {showMeta && (
+          <div className="lightbox-meta-panel" onClick={(e) => e.stopPropagation()}>
+            <MetaPanel item={item} isAdmin={isAdmin} onSave={onSaveMeta} />
+          </div>
+        )}
       </div>
     );
   }
@@ -656,11 +690,18 @@ function Lightbox({
           )}
         </div>
 
-        <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+        <div className={`lightbox-content${showMeta ? " lightbox-content--with-meta" : ""}`} onClick={(e) => e.stopPropagation()}>
           <button className="lightbox-close" onClick={onClose} aria-label="Close">✕</button>
 
-          <div className="lightbox-media">
-            {mediaContent("lightbox-image", "lightbox-video")}
+          <div className="lightbox-body">
+            <div className="lightbox-media">
+              {mediaContent("lightbox-image", "lightbox-video")}
+            </div>
+            {showMeta && (
+              <div className="lightbox-meta-panel">
+                <MetaPanel item={item} isAdmin={isAdmin} onSave={onSaveMeta} />
+              </div>
+            )}
           </div>
 
           <div className="lightbox-info">
@@ -1036,12 +1077,13 @@ export default function GalleryPage() {
 
   /** Admin only: permanently delete the media file from the server. */
   const handleDeletePermanently = useCallback(async (item) => {
+    const name = item.filename || item.id;
     if (!window.confirm(
-      `Permanently delete "${item.filename}" from the server?\n\nThis removes the file for ALL users and cannot be undone.`
+      `Permanently delete "${name}" from the server?\n\nThis removes the file for ALL users and cannot be undone.`
     )) return;
     try {
-      if (item.type === "photo") await deletePhoto(item.id);
-      else                       await deleteVideo(item.id);
+      if (item.type === "photo") await deletePhoto(name);
+      else                       await deleteVideo(name);
       setSelected(null);
       refresh();
     } catch (err) {
@@ -1060,6 +1102,21 @@ export default function GalleryPage() {
     await createUserMedia({ userId, mediaId: assignTarget.id, mediaType: assignTarget.type });
     setAssignTarget(null);
   }, [assignTarget]);
+
+  /** Save updated metadata for a photo or video. */
+  const handleSaveMeta = useCallback(async (item, data) => {
+    if (item.type === "photo") {
+      await patchPhoto(item.filename, data);
+    } else {
+      await patchVideo({ filename: item.filename, ...data });
+    }
+    // Optimistically update the local items list so the lightbox reflects the new values
+    setItems((prev) =>
+      prev.map((i) => i.filename === item.filename ? { ...i, ...data } : i)
+    );
+    // Bust the module-level cache so a manual refresh pulls fresh data
+    mediaCache.key = -1;
+  }, []);
 
   // ── Upload handlers ───────────────────────────────────────────────────────
   const clearUploadQueue = useCallback(() => {
@@ -1570,6 +1627,7 @@ export default function GalleryPage() {
           onRemoveFromLibrary={handleRemoveFromLibrary}
           onDeletePermanently={handleDeletePermanently}
           onAssignToUser={handleAssignToUser}
+          onSaveMeta={handleSaveMeta}
         />
       )}
 
