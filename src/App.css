@@ -1,3 +1,23 @@
+.app-spinner-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.app-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--surface-3, #e0e0e0);
+  border-top-color: var(--primary, #4f8ef7);
+  border-radius: 50%;
+  animation: app-spin 0.7s linear infinite;
+}
+
+@keyframes app-spin {
+  to { transform: rotate(360deg); }
+}
+
 #root {
   width: 100%;
   min-width: 320px;

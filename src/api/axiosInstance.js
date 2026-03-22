@@ -51,8 +51,8 @@ api.interceptors.response.use(
         const token = sessionStorage.getItem("token");
         const res = await axios.post(
           `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
-          { token },
-          { headers: { "Content-Type": "application/json" } }
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
         );
 
         const newToken = res.data.token;

@@ -168,7 +168,7 @@ function VideoPlayer({ item, videoClassName }) {
 
 // ── Thumbnail components ──────────────────────────────────────────────────────
 
-function PhotoThumb({ item, onClick, onContextMenu }) {
+const PhotoThumb = memo(function PhotoThumb({ item, onClick, onContextMenu }) {
   return (
     <button className="media-thumb" onClick={onClick} onContextMenu={onContextMenu} title={item.filename}>
       <img src={photoStreamUrl(item)} alt={item.filename} />
@@ -177,9 +177,9 @@ function PhotoThumb({ item, onClick, onContextMenu }) {
       </div>
     </button>
   );
-}
+});
 
-function VideoThumb({ item, onClick, onContextMenu }) {
+const VideoThumb = memo(function VideoThumb({ item, onClick, onContextMenu }) {
   const wrapRef = useRef(null);
   const [thumbSrc, setThumbSrc] = useState(null);
 
@@ -233,7 +233,7 @@ function VideoThumb({ item, onClick, onContextMenu }) {
       </div>
     </button>
   );
-}
+});
 
 // ── MetaPanel — shows / edits media metadata inside the lightbox ─────────────
 
@@ -962,11 +962,15 @@ export default function GalleryPage() {
 
   // ── Focus helpers ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (creatingAlbum) setTimeout(() => newAlbumInputRef.current?.focus(), 50);
+    if (!creatingAlbum) return;
+    const raf = requestAnimationFrame(() => newAlbumInputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
   }, [creatingAlbum]);
 
   useEffect(() => {
-    if (renamingAlbumId) setTimeout(() => renameInputRef.current?.focus(), 50);
+    if (!renamingAlbumId) return;
+    const raf = requestAnimationFrame(() => renameInputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
   }, [renamingAlbumId]);
 
   // ── Close context menu on outside click ───────────────────────────────────
@@ -1025,13 +1029,17 @@ export default function GalleryPage() {
       }
       await refreshAlbums(); // refresh counts
     } catch (err) {
-      console.error("Failed to add to album:", err);
+      setAlbumActionError(err.message ?? "Failed to add to album");
     }
   };
 
   const handleContextMenu = useCallback((e, item) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+    const MENU_W = 200;
+    const MENU_H = 220;
+    const x = Math.min(e.clientX, window.innerWidth  - MENU_W - 8);
+    const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8);
+    setContextMenu({ x, y, item });
   }, []);
 
   const handleCreateAndAdd = useCallback((item) => {
