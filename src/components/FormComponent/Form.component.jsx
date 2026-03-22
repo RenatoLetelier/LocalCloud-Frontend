@@ -31,20 +31,20 @@ export default function FormComponent({
 }) {
   const { login } = useAuth();
   const [state, dispatch] = useReducer(loginReducer, initialState);
+  const usernameInputRef = useRef(null);
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
-  // Falta Username
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const username = usernameInputRef.current?.value;
     const email = emailInputRef.current?.value;
     const password = passwordInputRef.current?.value;
-    // Falta Username
 
     dispatch({ type: "LOGIN_START" });
 
     try {
-      await login({ email, password });
+      await login({ username, email, password });
       dispatch({ type: "LOGIN_SUCCESS" });
     } catch (err) {
       dispatch({
@@ -69,6 +69,7 @@ export default function FormComponent({
         typeInput={"username"}
         isShowed={enableUsername}
         placeholder="Username"
+        ref={usernameInputRef}
       />
 
       {/* Email input */}
