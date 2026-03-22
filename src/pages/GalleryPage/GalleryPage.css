@@ -16,6 +16,7 @@
 
 /* ── Sidebar ───────────────────────────────────────────── */
 .gallery-sidebar {
+  /* width set via inline style on desktop; 200px is the CSS fallback */
   width: 200px;
   flex-shrink: 0;
   display: flex;
@@ -25,6 +26,29 @@
   background-color: var(--surface-1);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+}
+
+/* ── Sidebar resize handle (desktop only) ──────────────── */
+.sidebar-resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s;
+  position: relative;
+  z-index: 10;
+  /* Widen the hit area without affecting layout */
+}
+
+.sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px; /* 4px extra on each side for easier grabbing */
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background-color: var(--primary);
 }
 
 .sidebar-sheet-header {
@@ -775,4 +799,255 @@
   .media-thumb {
     border-radius: 4px;
   }
+}
+
+/* ── Admin view toggle ─────────────────────────────────── */
+.admin-view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.view-toggle-btn {
+  flex: 1;
+  padding: 5px 8px;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.view-toggle-btn.active {
+  background: var(--surface-1);
+  color: var(--text-1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+/* ── Albums section ─────────────────────────────────────── */
+.albums-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.albums-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+
+.albums-title {
+  margin-bottom: 0;
+}
+
+.album-create-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.album-create-btn:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.album-item {
+  width: 100%;
+}
+
+.album-btn {
+  justify-content: flex-start;
+}
+
+.album-btn-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.album-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.sidebar-btn.active .album-count {
+  background: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── Album rename / create input ────────────────────────── */
+.album-rename-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.album-create-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.album-create-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.album-action-btn {
+  flex: 1;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.album-action-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+/* ── Context menu ───────────────────────────────────────── */
+.context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 180px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: fade-in 0.1s ease;
+}
+
+.context-menu-header {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 8px 6px;
+}
+
+.context-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.context-menu-item:hover {
+  background: var(--surface-2);
+}
+
+.context-menu-new {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.context-menu-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 10px;
+}
+
+/* ── Video thumbnail preview ────────────────────────────── */
+.video-thumb-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Album rename button (pencil, visible on hover) ─────── */
+.album-rename-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.album-rename-btn:hover {
+  background: rgba(0,0,0,0.1);
+  color: var(--text-1);
+}
+
+.album-item:hover .album-rename-btn,
+.album-item:focus-within .album-rename-btn {
+  display: flex;
+}
+
+.sidebar-btn.active .album-rename-btn {
+  color: rgba(255,255,255,0.7);
+}
+
+.sidebar-btn.active .album-rename-btn:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
 }

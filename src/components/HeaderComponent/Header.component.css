@@ -41,3 +41,14 @@
 .profile-section:hover {
   background-color: var(--on-hover);
 }
+
+.header-username {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-right: 2px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
