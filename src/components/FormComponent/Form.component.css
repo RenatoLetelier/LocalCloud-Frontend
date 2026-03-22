@@ -2,27 +2,43 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 1rem;
+  gap: 14px;
 }
 
 .error-message {
+  font-size: 13px;
+  font-weight: 500;
   color: var(--error);
-  font-weight: bold;
+  padding: 10px 14px;
+  background: hsl(0 70% 55% / 0.1);
+  border: 1px solid hsl(0 70% 55% / 0.25);
+  border-radius: var(--radius);
 }
 
 .submit-button {
-  padding: 0.75rem;
+  padding: 11px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--primary);
-  color: var(--text-1);
-  font-size: 1rem;
-  font-weight: bold;
+  /* Always white text regardless of theme */
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: backgroud 0.3s;
+  transition: filter var(--duration-normal) var(--ease),
+              transform var(--duration-fast) var(--ease);
 }
 
-.submit-button:hover {
-  background: var(--on-primary);
-  color: var(--text-1);
+.submit-button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submit-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

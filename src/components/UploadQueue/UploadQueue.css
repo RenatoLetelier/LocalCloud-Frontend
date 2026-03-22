@@ -10,7 +10,7 @@
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-3);
   z-index: 1200;
   overflow: hidden;
   animation: uq-enter 0.18s ease;
@@ -50,7 +50,7 @@
   transition: background 0.12s;
 }
 .uq-close-btn:hover {
-  background: var(--hover, rgba(255, 255, 255, 0.08));
+  background: var(--on-hover);
 }
 
 /* ── List ── */
@@ -127,8 +127,8 @@
   font-weight: 500;
 }
 .uq-badge--queued { color: var(--text-2); }
-.uq-badge--done   { color: #4caf50; }
-.uq-badge--error  { color: #f44336; }
+.uq-badge--done   { color: var(--success); }
+.uq-badge--error  { color: var(--error); }
 
 /* ── Percentage ── */
 .uq-pct {

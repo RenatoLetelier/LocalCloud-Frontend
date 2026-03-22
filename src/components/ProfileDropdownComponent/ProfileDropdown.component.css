@@ -1,24 +1,131 @@
 .profile-dropdown-container {
-  padding: .3rem;
-  font-size: medium;
+  padding: 6px;
+  min-width: 180px;
+}
+
+/* ── Username header ── */
+.profile-dropdown-user {
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.profile-dropdown-username {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Mobile-only theme controls ── */
+.profile-dropdown-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px 2px 2px;
+  border-radius: var(--radius);
+}
+
+.profile-dropdown-theme-row:hover {
+  background-color: var(--on-hover);
+}
+
+/* Restore flex on the ThemeButton inside the dropdown (overridden by generic button rule) */
+.profile-dropdown-theme-row .button-theme-toggle {
+  display: flex;
+}
+
+.profile-dropdown-theme-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+/* icon wrapper — 34px wide to align with the ThemeButton above */
+.dropdown-item-icon {
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.profile-dropdown-container .profile-dropdown-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  padding: 8px 12px 8px 2px;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.profile-dropdown-container .profile-dropdown-action-btn:hover {
+  background-color: var(--on-hover);
+}
+
+.profile-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Hide mobile-only items on desktop */
+@media (min-width: 481px) {
+  .dropdown-mobile-only {
+    display: none;
+  }
 }
 
 .profile-dropdown-container ul {
   display: flex;
   flex-direction: column;
-  gap: .3rem;
+  gap: 2px;
+  list-style: none;
 }
 
 .profile-dropdown-container li {
   border-radius: var(--radius);
-  padding: .3rem 3rem .3rem .5rem;
-  list-style: none;
+  overflow: hidden;
 }
+
 .profile-dropdown-container li:hover {
   background-color: var(--on-hover);
 }
 
+/* Reset <a> links */
 .profile-dropdown-container a {
+  display: block;
+  padding: 8px 12px;
   color: var(--text-1);
   text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius);
+}
+
+/* Reset <button> inside the nav list only — avoids overriding theme controls */
+.profile-dropdown-container ul button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
 }

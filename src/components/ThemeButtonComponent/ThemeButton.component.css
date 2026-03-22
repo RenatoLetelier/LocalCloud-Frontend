@@ -1,18 +1,26 @@
 .toggle-theme-button-container {
-  border-radius: 10px;
-  padding: .3rem;
-  margin: .3rem;
-  cursor: pointer;
-}
-.toggle-theme-button-container:hover {
-  background-color: var(--on-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .button-theme-toggle {
   display: flex;
-  background: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-2);
   cursor: pointer;
-  color: inherit;
-  font: inherit;
+  transition: background-color var(--duration-normal) var(--ease),
+              color var(--duration-normal) var(--ease);
+}
+
+.button-theme-toggle:hover {
+  background: var(--on-hover);
+  color: var(--text-1);
 }
