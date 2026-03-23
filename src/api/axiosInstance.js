@@ -1,7 +1,9 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  // Empty baseURL → requests use relative paths (/api/…) so Vite's dev proxy
+  // forwards them to the backend.  No cross-origin request ever leaves the browser.
+  baseURL: "",
 });
 
 let isRefreshing = false;
@@ -50,7 +52,7 @@ api.interceptors.response.use(
       try {
         const token = sessionStorage.getItem("token");
         const res = await axios.post(
-          `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
+          "/api/auth/refresh",
           {},
           { headers: { Authorization: `Bearer ${token}` } }
         );

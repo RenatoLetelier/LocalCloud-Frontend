@@ -1,18 +1,22 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import Hls from "hls.js";
+import {
+  Images, Heart, Image, Video, FolderOpen, Globe,
+  Upload, CheckSquare, Trash2, Plus, X, RefreshCw,
+  PanelLeftClose, PanelLeftOpen, CheckCheck,
+  FolderOutput, AlertTriangle, FolderPlus,
+} from "lucide-react";
 import Header from "../../components/HeaderComponent/Header.component.jsx";
 import { useAuth } from "../../context/Contexts.jsx";
 import api from "../../api/axiosInstance.js";
 import { getPhotos, getVideos, uploadPhotoFile, getVideoUploadToken, deduplicateMedia, getUserMedia, createUserMedia, deleteUserMedia, deletePhoto, deletePhotoThumbnail, deleteVideo, deleteVideoThumbnail, patchPhoto, patchVideo } from "../../api/media.js";
-import { getAlbums, createAlbum, getAlbum, patchAlbum, addAlbumItem, removeAlbumItem } from "../../api/albums.js";
+import { getAlbums, createAlbum, getAlbum, patchAlbum, deleteAlbum, addAlbumItem, removeAlbumItem } from "../../api/albums.js";
 import { getUsers } from "../../api/users.js";
 import UploadQueue from "../../components/UploadQueue/UploadQueue.jsx";
 import "./GalleryPage.css";
 
 // Module-level cache: survives component remounts
 const mediaCache = { key: -1, photos: null, videos: null };
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 /**
  * Returns true if a user-media `mediaId` corresponds to a file entry from
@@ -33,10 +37,10 @@ function mediaIdMatchesDupFile(mediaId, dupFile) {
   );
 }
 
-const photoThumbUrl  = (item) => `${API_BASE}/api/photos/${item.id}/thumbnail`;
-const videoThumbUrl  = (item) => `${API_BASE}/api/videos/${item.id}/thumbnail`;
-const photoStreamUrl = (item) => `${API_BASE}/api/photos/${item.id}/stream`;
-const videoStreamUrl = (item) => `${API_BASE}/api/videos/${item.id}/stream/master.m3u8`;
+const photoThumbUrl  = (item) => `/api/photos/${item.id}/thumbnail`;
+const videoThumbUrl  = (item) => `/api/videos/${item.id}/thumbnail`;
+const photoStreamUrl = (item) => `/api/photos/${item.id}/stream`;
+const videoStreamUrl = (item) => `/api/videos/${item.id}/stream/master.m3u8`;
 
 /**
  * Fetches an authenticated image via axios (Bearer token) and renders it from
@@ -199,14 +203,16 @@ function SelectionBar({
     <div ref={barRef} className="selection-bar">
       {/* Left: close + count */}
       <div className="selection-bar-left">
-        <button className="sel-close-btn" onClick={onClear} aria-label="Clear selection">✕</button>
+        <button className="sel-close-btn" onClick={onClear} aria-label="Clear selection">
+          <X size={14} />
+        </button>
         <span className="selection-count">{count} selected</span>
       </div>
 
       {/* Actions */}
       <div className="selection-bar-actions">
         <button className="sel-btn" onClick={onSelectAll}>
-          Select all ({allCount})
+          <CheckCheck size={14} /> Select all ({allCount})
         </button>
 
         <div className="sel-divider" />
@@ -215,7 +221,7 @@ function SelectionBar({
         {hasMedia && (
           <div className="sel-album-wrap" ref={albumMenuRef}>
             <button className="sel-btn" onClick={() => setAlbumMenuOpen((v) => !v)}>
-              📁 Add to album ▾
+              <FolderPlus size={14} /> Add to album ▾
             </button>
             {albumMenuOpen && (
               <div className="sel-album-menu">
@@ -228,7 +234,7 @@ function SelectionBar({
                     className="sel-album-item"
                     onClick={() => { onAddToAlbum(a.id); setAlbumMenuOpen(false); }}
                   >
-                    📁 {a.name}
+                    <FolderOpen size={13} /> {a.name}
                   </button>
                 ))}
               </div>
@@ -239,21 +245,21 @@ function SelectionBar({
         {/* Remove from album */}
         {hasMedia && selectedAlbumId && (
           <button className="sel-btn sel-btn--danger" onClick={onRemoveFromAlbum}>
-            📤 Remove from album
+            <FolderOutput size={14} /> Remove from album
           </button>
         )}
 
         {/* Remove from library */}
         {hasMedia && (
           <button className="sel-btn sel-btn--danger" onClick={onRemoveFromLibrary}>
-            🗑 Remove from library
+            <Trash2 size={14} /> Remove from library
           </button>
         )}
 
         {/* Delete permanently — admin only */}
         {isAdmin && (
           <button className="sel-btn sel-btn--danger" onClick={onDeletePermanently}>
-            ⚠ Delete permanently
+            <AlertTriangle size={14} /> Delete permanently
           </button>
         )}
       </div>
@@ -264,9 +270,10 @@ function SelectionBar({
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const FILTERS = [
-  { id: "all",   label: "All",    icon: "⊞" },
-  { id: "photo", label: "Photos", icon: "🖼" },
-  { id: "video", label: "Videos", icon: "🎬" },
+  { id: "all",      label: "Library",   Icon: Images },
+  { id: "favorite", label: "Favorites", Icon: Heart  },
+  { id: "photo",    label: "Photos",    Icon: Image  },
+  { id: "video",    label: "Videos",    Icon: Video  },
 ];
 
 function formatSize(bytes) {
@@ -914,6 +921,7 @@ export default function GalleryPage() {
   const [error, setError]             = useState(null);
   const [selected, setSelected]       = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [uploadQueue, setUploadQueue]               = useState([]); // per-file progress queue
   const [videoUploadLoading, setVideoUploadLoading] = useState(false);
@@ -928,16 +936,18 @@ export default function GalleryPage() {
   const [selectedAlbumMediaIds, setSelectedAlbumMediaIds] = useState(null); // Set<mediaId> | null
   const [userMediaMap, setUserMediaMap]           = useState({}); // mediaId → userMedia record
   const [userMediaLoaded, setUserMediaLoaded]     = useState(false);
-  const [adminViewAll, setAdminViewAll]           = useState(true);
+  const [adminViewAll, setAdminViewAll]           = useState(false);
 
   // ── Context menu state ────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState(null); // { x, y, item }
 
   // ── Album editing state ───────────────────────────────────────────────────
-  const [creatingAlbum, setCreatingAlbum]     = useState(false);
-  const [newAlbumName, setNewAlbumName]       = useState("");
-  const [renamingAlbumId, setRenamingAlbumId] = useState(null);
-  const [renameValue, setRenameValue]         = useState("");
+  const [creatingAlbum, setCreatingAlbum]         = useState(false);
+  const [creatingAlbumBusy, setCreatingAlbumBusy] = useState(false);
+  const [newAlbumName, setNewAlbumName]           = useState("");
+  const [renamingAlbumId, setRenamingAlbumId]     = useState(null);
+  const [renameValue, setRenameValue]             = useState("");
+  const renameSubmittedRef                        = useRef(false);
   const [albumActionError, setAlbumActionError] = useState(null);
   const [pendingAlbumItem, setPendingAlbumItem] = useState(null); // item to add after album creation
 
@@ -978,7 +988,8 @@ export default function GalleryPage() {
 
   // ── Multi-select ───────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const selectionMode = selectedIds.size > 0;
+  const [selectionActive, setSelectionActive] = useState(false);
+  const selectionMode = selectionActive || selectedIds.size > 0;
 
   const toggleSelection = useCallback((id) => {
     setSelectedIds((prev) => {
@@ -988,7 +999,10 @@ export default function GalleryPage() {
     });
   }, []);
 
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectionActive(false);
+  }, []);
 
   // ── Desktop pagination ────────────────────────────────────────────────────
   const itemsPerPage = useItemsPerPage(mainRef, selectionBarRef, selectionMode, !isMobile);
@@ -1075,11 +1089,18 @@ export default function GalleryPage() {
 
         const fetches = [];
         if (!mediaCache.photos) fetches.push(
-          getPhotos().then((r) => { mediaCache.photos = r.data.data ?? []; })
+          getPhotos().then((r) => {
+            // Admin response: { data: [...] } (media-server envelope kept)
+            // User response:  { files: [...], total }
+            mediaCache.photos = r.data.data ?? r.data.files ?? [];
+          })
         );
         if (!mediaCache.videos) fetches.push(
           getVideos().then((r) => {
-            mediaCache.videos = (r.data.data ?? []).map((v) => ({
+            // Admin response: { data: [...] } or { videos: [...] }
+            // User response:  { videos: [...], total }
+            const raw = r.data.data ?? r.data.videos ?? [];
+            mediaCache.videos = raw.map((v) => ({
               ...v,
               type: "video",
               filename: v.name,
@@ -1096,8 +1117,9 @@ export default function GalleryPage() {
         });
 
         const fetched =
-          filter === "photo" ? all.filter((i) => i.type === "photo") :
-          filter === "video" ? all.filter((i) => i.type === "video") :
+          filter === "photo"    ? all.filter((i) => i.type === "photo") :
+          filter === "video"    ? all.filter((i) => i.type === "video") :
+          filter === "favorite" ? all.filter((i) => i.favorite === true) :
           all;
 
         fetched.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
@@ -1129,7 +1151,10 @@ export default function GalleryPage() {
   // ── Data fetching: albums ─────────────────────────────────────────────────
   const refreshAlbums = useCallback(async () => {
     setAlbumsLoading(true);
-    albumItemsCache.current = {}; // invalidate album items cache on any album list refresh
+    // NOTE: Do NOT clear albumItemsCache here.
+    // Each individual handler already deletes the specific entry it modified.
+    // Wiping the whole cache here would cause the currently-viewed album to
+    // show an empty grid momentarily every time the album list is refreshed.
     try {
       const r = await getAlbums();
       setAlbums(r.data ?? []);
@@ -1149,6 +1174,10 @@ export default function GalleryPage() {
     // Serve from cache immediately — no network round-trip
     const cached = albumItemsCache.current[selectedAlbumId];
     if (cached) { setSelectedAlbumMediaIds(cached); return; }
+
+    // Show an empty grid while we wait — prevents ghosting (all photos briefly
+    // showing through before the album filter arrives).
+    setSelectedAlbumMediaIds(new Set());
 
     getAlbum(selectedAlbumId)
       .then((r) => {
@@ -1185,7 +1214,8 @@ export default function GalleryPage() {
   // ── Album handlers ────────────────────────────────────────────────────────
   const handleCreateAlbum = async () => {
     const name = newAlbumName.trim();
-    if (!name) return;
+    if (!name || creatingAlbumBusy) return;
+    setCreatingAlbumBusy(true);
     setAlbumActionError(null);
     try {
       const res = await createAlbum(name);
@@ -1200,18 +1230,43 @@ export default function GalleryPage() {
       await refreshAlbums();
     } catch (err) {
       setAlbumActionError(err.message ?? "Failed to create album");
+    } finally {
+      setCreatingAlbumBusy(false);
     }
   };
 
   const handleRenameAlbum = async (albumId) => {
+    // Guard against double-fire: Enter keydown → input unmounts → onBlur fires
+    if (renameSubmittedRef.current) return;
+    renameSubmittedRef.current = true;
+
     const name = renameValue.trim();
     setRenamingAlbumId(null);
-    if (!name) return;
+
+    if (!name) { renameSubmittedRef.current = false; return; }
     try {
       await patchAlbum(albumId, { name });
-      await refreshAlbums();
+      // Optimistically update the local albums list so the title bar reflects
+      // the new name instantly without waiting for a round-trip.
+      setAlbums((prev) => prev.map((a) => a.id === albumId ? { ...a, name } : a));
+      // Still refresh in background to sync any other metadata.
+      refreshAlbums();
     } catch (err) {
       setAlbumActionError(err.message ?? "Failed to rename album");
+    } finally {
+      renameSubmittedRef.current = false;
+    }
+  };
+
+  const handleDeleteAlbum = async (albumId) => {
+    if (!window.confirm("Delete this album? The photos inside will not be deleted.")) return;
+    try {
+      await deleteAlbum(albumId);
+      delete albumItemsCache.current[albumId];
+      if (selectedAlbumId === albumId) setSelectedAlbumId(null);
+      await refreshAlbums();
+    } catch (err) {
+      setAlbumActionError(err.message ?? "Failed to delete album");
     }
   };
 
@@ -1454,26 +1509,12 @@ export default function GalleryPage() {
       );
 
       try {
-        // Step 1 — upload the file; response contains the new mediaId
-        const res = await uploadPhotoFile(item.file, (pct) =>
+        // Upload the file — the backend now auto-links it to the uploader in one step
+        await uploadPhotoFile(item.file, (pct) =>
           setUploadQueue((prev) =>
             prev.map((q) => q.id === item.id ? { ...q, progress: pct } : q)
           )
         );
-
-        // Step 2 — auto-assign the uploaded photo to the uploader.
-        // The server wraps most responses in { data: … }; try all known shapes.
-        const raw    = res.data ?? {};
-        const data   = raw.data ?? raw;           // unwrap { data: … } envelope if present
-        const mediaId =
-          data.files?.[0]?.id ??  // { data: { files: [{ id }] } }
-          data.file?.id       ??  // { data: { file: { id } } }
-          (Array.isArray(data) ? data[0]?.id : undefined) ?? // { data: [{ id }] }
-          data.id;                // { data: { id } }  or flat { id }
-
-        if (mediaId && user?.id) {
-          await createUserMedia({ userId: user.id, mediaId, mediaType: "photo" });
-        }
 
         setUploadQueue((prev) =>
           prev.map((q) => q.id === item.id ? { ...q, status: "done", progress: 100 } : q)
@@ -1612,139 +1653,100 @@ export default function GalleryPage() {
         )}
 
         <aside
-          className={`gallery-sidebar${sidebarOpen ? " sidebar-open" : ""}`}
-          style={!isMobile ? { width: sidebarWidth } : undefined}
+          className={`gallery-sidebar${sidebarOpen ? " sidebar-open" : ""}${!isMobile && sidebarCollapsed ? " sidebar-collapsed" : ""}`}
+          style={!isMobile && !sidebarCollapsed ? { width: sidebarWidth } : undefined}
         >
+          {/* Desktop: sidebar collapse toggle — always rendered so it stays visible when collapsed */}
+          {!isMobile && (
+            <div className="sidebar-collapse-row">
+              <button
+                className="sidebar-collapse-btn"
+                onClick={() => setSidebarCollapsed((c) => !c)}
+                title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+                aria-label="Toggle sidebar"
+              >
+                {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+            </div>
+          )}
+
           {/* Sheet drag handle + header (mobile only) */}
           <div className="sidebar-sheet-header">
             <div className="sidebar-drag-handle" />
             <div className="sidebar-sheet-title-row">
-              <p className="sidebar-title">Filters</p>
+              <p className="sidebar-title">Library</p>
               <button
                 className="sidebar-close-btn"
                 onClick={() => setSidebarOpen(false)}
-                aria-label="Close filters"
-              >✕</button>
+                aria-label="Close sidebar"
+              ><X size={16} /></button>
             </div>
           </div>
 
-          <p className="sidebar-title sidebar-title-desktop">Filter</p>
+          {/* ── Section 1: Photos ── */}
+          <div className="sidebar-section">
+            <p className="sidebar-section-title">Photos</p>
+            <nav className="sidebar-nav">
+              {FILTERS.map(({ id, label, Icon: FilterIcon }) => {
+                // "Library" (id=all) is only active when NOT in admin "All media" mode
+                const isActive =
+                  filter === id &&
+                  !selectedAlbumId &&
+                  !adminViewAll;
+                return (
+                  <button
+                    key={id}
+                    className={`sidebar-btn${isActive ? " active" : ""}`}
+                    onClick={() => {
+                      setFilter(id);
+                      setSelectedAlbumId(null);
+                      setAdminViewAll(false); // always switch to own-media view
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <FilterIcon className="sidebar-icon" size={16} />
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
 
-          {/* Admin: All Media / My Media toggle */}
-          {isAdmin && (
-            <div className="admin-view-toggle">
-              <button
-                className={`view-toggle-btn${adminViewAll ? " active" : ""}`}
-                onClick={() => { setAdminViewAll(true); }}
-              >All</button>
-              <button
-                className={`view-toggle-btn${!adminViewAll ? " active" : ""}`}
-                onClick={() => setAdminViewAll(false)}
-              >Mine</button>
-            </div>
-          )}
+          </div>
 
-          {/* Type filter nav */}
-          <nav className="sidebar-nav">
-            {FILTERS.map((f) => (
+          {/* ── Section 2: Albums ── */}
+          <div className="sidebar-section">
+            <div className="sidebar-section-header">
+              <p className="sidebar-section-title">Albums</p>
               <button
-                key={f.id}
-                className={`sidebar-btn${filter === f.id && !selectedAlbumId ? " active" : ""}`}
-                onClick={() => { setFilter(f.id); setSelectedAlbumId(null); setSidebarOpen(false); }}
-              >
-                <span className="sidebar-btn-icon">{f.icon}</span>
-                {f.label}
-              </button>
-            ))}
-          </nav>
-
-          {!loading && !error && (
-            <div className="sidebar-count-row">
-              <p className="sidebar-count">
-                {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
-              </p>
-              <button
-                className="sidebar-refresh-btn"
-                onClick={refresh}
-                title="Refresh media"
-                aria-label="Refresh media"
-              >↻</button>
-            </div>
-          )}
-
-          {/* Upload button — visible to every user */}
-          <input
-            ref={photoInputRef}
-            type="file"
-            multiple
-            accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
-            style={{ display: "none" }}
-            onChange={handlePhotoUpload}
-          />
-          <button
-            className="sidebar-btn upload-photos-btn"
-            onClick={() => { photoInputRef.current?.click(); setSidebarOpen(false); }}
-          >
-            <span className="sidebar-btn-icon">⬆</span>
-            Upload Photos
-          </button>
-
-          {/* Albums section */}
-          <div className="albums-section">
-            <div className="albums-header">
-              <p className="sidebar-title albums-title">Albums</p>
-              <button
-                className="album-create-btn"
+                className="sidebar-section-action-btn"
                 onClick={() => { setPendingAlbumItem(null); setNewAlbumName(""); setCreatingAlbum(true); }}
                 title="New album"
                 aria-label="New album"
-              >+</button>
+              ><Plus size={14} /></button>
             </div>
 
-            {albumsLoading && <p className="sidebar-count">Loading…</p>}
-
-            {!albumsLoading && albums.length === 0 && !creatingAlbum && (
-              <p className="sidebar-count">No albums yet</p>
+            {albums.length === 0 && !creatingAlbum && (
+              <p className="sidebar-empty-hint">No albums yet</p>
             )}
 
             <nav className="sidebar-nav">
               {albums.map((album) => (
                 <div key={album.id} className="album-item">
-                  {renamingAlbumId === album.id ? (
-                    <input
-                      ref={renameInputRef}
-                      className="album-rename-input"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={() => handleRenameAlbum(album.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleRenameAlbum(album.id);
-                        if (e.key === "Escape") setRenamingAlbumId(null);
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <button
-                        className={`sidebar-btn album-btn${selectedAlbumId === album.id ? " active" : ""}`}
-                        onClick={() => {
-                          setSelectedAlbumId(selectedAlbumId === album.id ? null : album.id);
-                          setSidebarOpen(false);
-                        }}
-                      >
-                        <span className="sidebar-btn-icon">📁</span>
-                        <span className="album-btn-name">{album.name}</span>
-                        <span className="album-count">{album._count?.items ?? 0}</span>
-                      </button>
-                      <button
-                        className="album-rename-btn"
-                        title="Rename album"
-                        onClick={() => {
-                          setRenamingAlbumId(album.id);
-                          setRenameValue(album.name);
-                        }}
-                      >✏</button>
-                    </>
-                  )}
+                  <button
+                    className={`sidebar-btn album-btn${selectedAlbumId === album.id ? " active" : ""}`}
+                    onClick={() => {
+                      setSelectedAlbumId(selectedAlbumId === album.id ? null : album.id);
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <FolderOpen className="sidebar-icon" size={16} />
+                    <span className="album-btn-name">{album.name}</span>
+                  </button>
+                  <button
+                    className="album-delete-btn"
+                    title="Delete album"
+                    onClick={() => handleDeleteAlbum(album.id)}
+                  ><Trash2 size={13} /></button>
                 </div>
               ))}
             </nav>
@@ -1759,7 +1761,7 @@ export default function GalleryPage() {
                   value={newAlbumName}
                   onChange={(e) => setNewAlbumName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCreateAlbum();
+                    if (e.key === "Enter" && !creatingAlbumBusy) handleCreateAlbum();
                     if (e.key === "Escape") {
                       setCreatingAlbum(false);
                       setPendingAlbumItem(null);
@@ -1768,7 +1770,12 @@ export default function GalleryPage() {
                   }}
                 />
                 <div className="album-create-actions">
-                  <button className="album-action-btn" onClick={handleCreateAlbum} aria-label="Confirm">✓</button>
+                  <button
+                    className="album-action-btn"
+                    onClick={handleCreateAlbum}
+                    disabled={creatingAlbumBusy}
+                    aria-label="Confirm"
+                  >{creatingAlbumBusy ? "…" : "✓"}</button>
                   <button
                     className="album-action-btn"
                     onClick={() => { setCreatingAlbum(false); setPendingAlbumItem(null); setNewAlbumName(""); }}
@@ -1783,75 +1790,203 @@ export default function GalleryPage() {
             )}
           </div>
 
-          {/* Admin section */}
+          {/* ── Section 3: Sharing (admin only) ── */}
           {isAdmin && (
-            <div className="admin-section">
-              <p className="sidebar-title">Admin</p>
-
-
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept=".zip"
-                style={{ display: "none" }}
-                onChange={handleVideoUpload}
-              />
-              <button
-                className="admin-btn upload-btn"
-                disabled
-                title="Video upload is temporarily unavailable"
-              >
-                <span>🎬</span>
-                Upload Video
-              </button>
-              {videoUploadError && <p className="admin-msg error">{videoUploadError}</p>}
-
-              <button
-                className="admin-btn dedupe-btn"
-                onClick={handleDeduplicate}
-                disabled={dedupeLoading}
-              >
-                <span>⊗</span>
-                {dedupeLoading ? "Running…" : "Deduplicate"}
-              </button>
-              {dedupeMessage && <p className="admin-msg">{dedupeMessage}</p>}
+            <div className="sidebar-section">
+              <p className="sidebar-section-title">Sharing</p>
+              <nav className="sidebar-nav">
+                <button
+                  className={`sidebar-btn${adminViewAll && filter === "all" && !selectedAlbumId ? " active" : ""}`}
+                  onClick={() => {
+                    setAdminViewAll(true);
+                    setFilter("all");
+                    setSelectedAlbumId(null);
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <Globe className="sidebar-icon" size={16} />
+                  All media
+                </button>
+              </nav>
             </div>
           )}
+
+          {/* Hidden video input (triggered by toolbar button) */}
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept=".zip"
+            style={{ display: "none" }}
+            onChange={handleVideoUpload}
+          />
         </aside>
 
-        {/* ── Sidebar resize handle (desktop only) ──────────── */}
-        {!isMobile && (
+        {/* ── Sidebar resize handle (desktop, only when expanded) ── */}
+        {!isMobile && !sidebarCollapsed && (
           <div className="sidebar-resize-handle" onMouseDown={handleResizeStart} />
         )}
+        {/* Narrow spacer so layout doesn't shift when collapsed */}
+        {!isMobile && sidebarCollapsed && <div style={{ width: 1, flexShrink: 0 }} />}
 
         {/* ── Main content ──────────────────────────────────── */}
         <main className="gallery-main" ref={mainRef}>
 
-          {!selectionMode && <div className="mobile-topbar">
-            <button className="mobile-filter-btn" onClick={() => setSidebarOpen(true)}>
-              <span className="sidebar-btn-icon">
-                {selectedAlbumId
-                  ? "📁"
-                  : activeFilter?.icon}
-              </span>
-              {selectedAlbumId
-                ? (albums.find((a) => a.id === selectedAlbumId)?.name ?? "Album")
-                : activeFilter?.label}
-              <span className="mobile-filter-chevron">↑</span>
-            </button>
-            <button
-              className="mobile-upload-btn"
-              onClick={() => photoInputRef.current?.click()}
-              title="Upload photos"
-              aria-label="Upload photos"
-            >⬆</button>
-            <button
-              className="mobile-upload-btn"
-              onClick={refresh}
-              title="Refresh media"
-              aria-label="Refresh media"
-            >↻</button>
-          </div>}
+          {/* Hidden file input for photo uploads */}
+          <input
+            ref={photoInputRef}
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.heic,.webp,.avif"
+            style={{ display: "none" }}
+            onChange={handlePhotoUpload}
+          />
+
+          {/* ── Body toolbar (always visible) ─── */}
+          <div className="body-toolbar">
+            <div className="body-toolbar-left">
+              {/* Media counter (desktop) */}
+              {!isMobile && !loading && !error && (
+                <span className="toolbar-item-count">
+                  {filteredItems.length} {filteredItems.length === 1 ? "item" : "items"}
+                </span>
+              )}
+              {/* Mobile: filter/album pill */}
+              {isMobile && !selectionMode && (
+                <button className="mobile-filter-btn" onClick={() => setSidebarOpen(true)}>
+                  {selectedAlbumId
+                    ? <FolderOpen size={15} />
+                    : activeFilter && <activeFilter.Icon size={15} />}
+                  <span>
+                    {selectedAlbumId
+                      ? (albums.find((a) => a.id === selectedAlbumId)?.name ?? "Album")
+                      : activeFilter?.label}
+                  </span>
+                  <span className="mobile-filter-chevron">↑</span>
+                </button>
+              )}
+            </div>
+
+            <div className="body-toolbar-right">
+              {/* Reload */}
+              <button
+                className="body-toolbar-btn"
+                onClick={refresh}
+                title="Reload media"
+              >
+                <RefreshCw size={16} />
+                <span className="body-toolbar-btn-label">Reload</span>
+              </button>
+
+              {/* Upload photos */}
+              <button
+                className="body-toolbar-btn"
+                onClick={() => photoInputRef.current?.click()}
+                title="Upload photos"
+              >
+                <Upload size={16} />
+                <span className="body-toolbar-btn-label">Upload</span>
+              </button>
+
+              {/* Upload video — admin only, currently disabled */}
+              {isAdmin && (
+                <button
+                  className="body-toolbar-btn"
+                  disabled
+                  title="Video upload is temporarily unavailable"
+                >
+                  <Video size={16} />
+                  <span className="body-toolbar-btn-label">Upload Video</span>
+                </button>
+              )}
+
+              {/* Deduplicate — admin only */}
+              {isAdmin && (
+                <button
+                  className="body-toolbar-btn body-toolbar-btn--warning"
+                  onClick={handleDeduplicate}
+                  disabled={dedupeLoading}
+                  title="Remove duplicate media"
+                >
+                  <RefreshCw size={16} className={dedupeLoading ? "spin" : ""} />
+                  <span className="body-toolbar-btn-label">
+                    {dedupeLoading ? "Running…" : "Deduplicate"}
+                  </span>
+                </button>
+              )}
+
+              {/* Select / Cancel */}
+              <button
+                className={`body-toolbar-btn${selectionMode ? " body-toolbar-btn--active" : ""}`}
+                onClick={() => {
+                  if (selectionMode) clearSelection();
+                  else setSelectionActive(true);
+                }}
+                title={selectionMode ? "Exit selection" : "Select items"}
+              >
+                <CheckSquare size={16} />
+                <span className="body-toolbar-btn-label">
+                  {selectionMode ? "Cancel" : "Select"}
+                </span>
+              </button>
+
+              {/* Delete selected */}
+              {selectionMode && selectedIds.size > 0 && (
+                <button
+                  className="body-toolbar-btn body-toolbar-btn--danger"
+                  onClick={isAdmin ? handleBulkDeletePermanently : handleBulkRemoveFromLibrary}
+                  title={isAdmin ? "Delete permanently" : "Remove from library"}
+                >
+                  <Trash2 size={16} />
+                  <span className="body-toolbar-btn-label">Delete</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Admin: inline feedback messages from toolbar actions */}
+          {videoUploadError && <p className="toolbar-msg toolbar-msg--error">{videoUploadError}</p>}
+          {dedupeMessage    && <p className="toolbar-msg">{dedupeMessage}</p>}
+
+          {/* Album title (editable, shown when an album is selected) */}
+          {/* Rendered BEFORE loading/empty states so it stays at the top while content loads */}
+          {selectedAlbumId && (() => {
+            const album = albums.find((a) => a.id === selectedAlbumId);
+            if (!album) return null;
+            return renamingAlbumId === selectedAlbumId ? (
+              <div className="album-title-bar">
+                <input
+                  ref={renameInputRef}
+                  className="album-title-input"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => handleRenameAlbum(selectedAlbumId)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      // Mark as submitted BEFORE calling the handler so the
+                      // subsequent onBlur (fired when the input unmounts) is ignored.
+                      renameSubmittedRef.current = true;
+                      handleRenameAlbum(selectedAlbumId);
+                    }
+                    if (e.key === "Escape") {
+                      renameSubmittedRef.current = true; // suppress onBlur too
+                      setRenamingAlbumId(null);
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="album-title-bar">
+                <h2
+                  className="album-title"
+                  title="Click to rename"
+                  onClick={() => { setRenamingAlbumId(selectedAlbumId); setRenameValue(album.name); }}
+                >
+                  {album.name}
+                  <span className="album-title-edit-icon">✏</span>
+                </h2>
+              </div>
+            );
+          })()}
 
           {loading && (
             <div className="gallery-status">
