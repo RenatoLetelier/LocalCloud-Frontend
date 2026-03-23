@@ -1092,14 +1092,16 @@ export default function GalleryPage() {
           getPhotos().then((r) => {
             // Admin response: { data: [...] } (media-server envelope kept)
             // User response:  { files: [...], total }
-            mediaCache.photos = r.data.data ?? r.data.files ?? [];
+            const photos = r.data.data ?? r.data.files ?? r.data ?? [];
+            mediaCache.photos = Array.isArray(photos) ? photos : [];
           })
         );
         if (!mediaCache.videos) fetches.push(
           getVideos().then((r) => {
             // Admin response: { data: [...] } or { videos: [...] }
             // User response:  { videos: [...], total }
-            const raw = r.data.data ?? r.data.videos ?? [];
+            const candidate = r.data.data ?? r.data.videos ?? r.data ?? [];
+            const raw = Array.isArray(candidate) ? candidate : [];
             mediaCache.videos = raw.map((v) => ({
               ...v,
               type: "video",
@@ -1141,7 +1143,7 @@ export default function GalleryPage() {
     getUserMedia()
       .then((r) => {
         const map = {};
-        (r.data ?? []).forEach((um) => { map[um.mediaId] = um; });
+        (Array.isArray(r.data) ? r.data : []).forEach((um) => { map[um.mediaId] = um; });
         setUserMediaMap(map);
       })
       .catch(() => {})
@@ -1157,7 +1159,9 @@ export default function GalleryPage() {
     // show an empty grid momentarily every time the album list is refreshed.
     try {
       const r = await getAlbums();
-      setAlbums(r.data ?? []);
+      // Normalise: bare array (expected) OR wrapped { data: [...] } shape
+      const data = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : []);
+      setAlbums(data);
     } catch {
       setAlbums([]);
     } finally {
@@ -1248,7 +1252,7 @@ export default function GalleryPage() {
       await patchAlbum(albumId, { name });
       // Optimistically update the local albums list so the title bar reflects
       // the new name instantly without waiting for a round-trip.
-      setAlbums((prev) => prev.map((a) => a.id === albumId ? { ...a, name } : a));
+      setAlbums((prev) => (Array.isArray(prev) ? prev : []).map((a) => a.id === albumId ? { ...a, name } : a));
       // Still refresh in background to sync any other metadata.
       refreshAlbums();
     } catch (err) {
@@ -1465,7 +1469,7 @@ export default function GalleryPage() {
     }
     // Optimistically update the local items list so the lightbox reflects the new values
     setItems((prev) =>
-      prev.map((i) => i.filename === item.filename ? { ...i, ...data } : i)
+      (Array.isArray(prev) ? prev : []).map((i) => i.filename === item.filename ? { ...i, ...data } : i)
     );
     // Bust the module-level cache so a manual refresh pulls fresh data
     mediaCache.key = -1;
