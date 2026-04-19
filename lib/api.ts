@@ -157,15 +157,15 @@ export const api = {
   },
 
   playback: {
-    list: () => request<PlaybackEntry[]>('/api/playback-progress'),
-    get: (movieId: string) => request<PlaybackEntry>(`/api/playback-progress/${movieId}`),
+    list: () => request<PlaybackEntry[]>('/api/playback'),
+    get: (movieId: string) => request<PlaybackEntry>(`/api/playback/${movieId}`),
     save: (movieId: string, currentTime: number, duration: number) =>
-      request<PlaybackEntry>(`/api/playback-progress/${movieId}`, {
+      request<PlaybackEntry>(`/api/playback/${movieId}`, {
         method: 'PUT',
         body: JSON.stringify({ currentTime, duration }),
       }),
     delete: (movieId: string) =>
-      request<void>(`/api/playback-progress/${movieId}`, { method: 'DELETE' }),
+      request<void>(`/api/playback/${movieId}`, { method: 'DELETE' }),
   },
 
   users: {
