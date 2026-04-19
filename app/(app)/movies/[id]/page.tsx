@@ -3,15 +3,20 @@
 export const runtime = 'edge';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ArrowLeft, Film, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useMovie } from '@/hooks/queries/useMovies';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
-import { VideoPlayer } from '@/components/movies/VideoPlayer';
+import dynamic from 'next/dynamic';
+
+const VideoPlayer = dynamic(
+  () => import('@/components/movies/VideoPlayer').then((m) => m.VideoPlayer),
+  { ssr: false },
+);
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { srtToVtt, createVttBlobUrl } from '@/lib/subtitles';
 
 export default function MovieDetailPage() {
   const params = useParams<{ id: string }>();
@@ -19,35 +24,43 @@ export default function MovieDetailPage() {
   const movieId = params.id;
 
   const { data: movie, isLoading, error, refetch } = useMovie(movieId);
-  const { savedTime, saveProgress, SAVE_INTERVAL } = usePlaybackProgress(movieId);
+  const { savedTime, saveProgress, saveProgressThrottled } = usePlaybackProgress(movieId);
 
-  const lastSaveRef = useRef(0);
+  // Fetch subtitles for this movie
+  const { data: subtitleData = [] } = useQuery({
+    queryKey: ['subtitles', movieId],
+    queryFn: () => api.subtitles.list(movieId),
+    enabled: !!movieId,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  // Build stream URL with auth token
-  const streamUrl = movie ? `${api.libraryMedia.streamUrl(movie.piPath)}&token=${getToken()}` : '';
+  // Build stream URL with auth token (video element can't set Authorization header)
+  const streamUrl = movie
+    ? `${api.libraryMedia.streamUrl(movie.piPath)}&token=${getToken()}`
+    : '';
 
-  // Handle time updates — save progress every SAVE_INTERVAL ms
+  // Build subtitle track list — <track> also can't set Authorization header
+  const subtitles = useMemo(() => {
+    const token = getToken();
+    return subtitleData.map((sub) => ({
+      label: sub.label,
+      lang: sub.lang,
+      src: `${api.libraryMedia.streamUrl(sub.piPath)}&token=${token}`,
+    }));
+  }, [subtitleData]);
+
+  // Track latest time for save-on-unmount
+  const latestTimeRef = useRef<{ currentTime: number; duration: number } | null>(null);
+
   const handleTimeUpdate = useCallback(
     (currentTime: number, duration: number) => {
-      const now = Date.now();
-      if (now - lastSaveRef.current >= SAVE_INTERVAL) {
-        saveProgress(currentTime, duration);
-        lastSaveRef.current = now;
-      }
+      latestTimeRef.current = { currentTime, duration };
+      saveProgressThrottled(currentTime, duration);
     },
-    [saveProgress, SAVE_INTERVAL],
+    [saveProgressThrottled],
   );
 
   // Save progress on unmount
-  const latestTimeRef = useRef<{ currentTime: number; duration: number } | null>(null);
-  const handleTimeUpdateFull = useCallback(
-    (currentTime: number, duration: number) => {
-      latestTimeRef.current = { currentTime, duration };
-      handleTimeUpdate(currentTime, duration);
-    },
-    [handleTimeUpdate],
-  );
-
   useEffect(() => {
     return () => {
       if (latestTimeRef.current) {
@@ -58,7 +71,6 @@ export default function MovieDetailPage() {
   }, []);
 
   const handleEnded = useCallback(() => {
-    // On movie end, clear progress (will be >95% so usePlaybackProgress auto-removes)
     if (latestTimeRef.current) {
       saveProgress(latestTimeRef.current.duration, latestTimeRef.current.duration);
     }
@@ -105,7 +117,8 @@ export default function MovieDetailPage() {
         src={streamUrl}
         title={movie.title}
         startTime={savedTime}
-        onTimeUpdate={handleTimeUpdateFull}
+        subtitles={subtitles}
+        onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
       />
 

@@ -2,28 +2,20 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, RotateCcw, Trash2 } from 'lucide-react';
-import { useFiles } from '@/hooks/queries/useFiles';
 import { useTrash } from '@/hooks/useTrash';
 import { useDeleteFiles } from '@/hooks/mutations/useDeleteFiles';
-import { showSuccess, showUndoToast } from '@/lib/toast';
+import { showSuccess } from '@/lib/toast';
 import { PhotoCard } from './PhotoCard';
 import { PhotoGridSkeleton } from './PhotoGridSkeleton';
 import { Modal } from '@/components/ui/Modal';
-import type { FileRecord } from '@/lib/types';
 
 export function TrashView() {
-  const { data: files = [], isLoading } = useFiles();
-  const { trashedIds, trashedItems, restoreFiles, removeFromTrash } = useTrash();
+  const { trashedFiles, trashedItems, restoreFiles, emptyTrashMutation } = useTrash();
   const deleteFiles = useDeleteFiles();
 
-  const [selected, setSelected]           = useState<Set<string>>(new Set());
-  const [deleteOpen, setDeleteOpen]       = useState(false);
+  const [selected, setSelected]             = useState<Set<string>>(new Set());
+  const [deleteOpen, setDeleteOpen]         = useState(false);
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false);
-
-  // Only show files that are in the trash
-  const trashedFiles = useMemo(() => {
-    return files.filter((f) => trashedIds.has(f.id));
-  }, [files, trashedIds]);
 
   // Map of fileId → daysRemaining
   const daysMap = useMemo(() => {
@@ -59,7 +51,6 @@ export function TrashView() {
     const ids = [...selected];
     deleteFiles.mutate(ids, {
       onSuccess: () => {
-        removeFromTrash(ids);
         clearSelection();
         setDeleteOpen(false);
       },
@@ -67,16 +58,12 @@ export function TrashView() {
   }
 
   function handleEmptyTrash() {
-    const ids = [...trashedIds];
-    deleteFiles.mutate(ids, {
+    emptyTrashMutation.mutate(undefined, {
       onSuccess: () => {
-        removeFromTrash(ids);
         setEmptyTrashOpen(false);
       },
     });
   }
-
-  if (isLoading) return <PhotoGridSkeleton />;
 
   return (
     <>
@@ -207,7 +194,7 @@ export function TrashView() {
       {/* Empty trash confirmation */}
       <Modal
         open={emptyTrashOpen}
-        onClose={() => !deleteFiles.isPending && setEmptyTrashOpen(false)}
+        onClose={() => !emptyTrashMutation.isPending && setEmptyTrashOpen(false)}
         title="Vaciar papelera"
       >
         <div className="p-5 flex flex-col gap-4">
@@ -218,17 +205,17 @@ export function TrashView() {
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setEmptyTrashOpen(false)}
-              disabled={deleteFiles.isPending}
+              disabled={emptyTrashMutation.isPending}
               className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleEmptyTrash}
-              disabled={deleteFiles.isPending}
+              disabled={emptyTrashMutation.isPending}
               className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
             >
-              {deleteFiles.isPending ? 'Eliminando…' : 'Sí, vaciar papelera'}
+              {emptyTrashMutation.isPending ? 'Eliminando…' : 'Sí, vaciar papelera'}
             </button>
           </div>
         </div>

@@ -34,7 +34,7 @@ function formatTime(seconds: number): string {
 export function VideoPlayer({ src, title, startTime, subtitles = [], onTimeUpdate, onEnded }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -48,6 +48,15 @@ export function VideoPlayer({ src, title, startTime, subtitles = [], onTimeUpdat
   const [showResumePrompt, setShowResumePrompt] = useState(!!startTime && startTime > 5);
   const [activeSubtitle, setActiveSubtitle] = useState(-1); // -1 = off
   const [showSubMenu, setShowSubMenu] = useState(false);
+
+  // Apply subtitle track via TextTrack API (the `default` attr only applies at mount)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    Array.from(video.textTracks).forEach((track, i) => {
+      track.mode = i === activeSubtitle ? 'showing' : 'hidden';
+    });
+  }, [activeSubtitle]);
 
   // ── Auto-hide controls ────────────────────────────────────────────────────
   const resetHideTimer = useCallback(() => {

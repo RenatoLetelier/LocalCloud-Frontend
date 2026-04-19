@@ -1,16 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Props {
   count: number;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  categories: string[];
+  categories: { label: string; value: string }[];
   selectedCategory: string;
   onCategoryChange: (category: string) => void;
+  onUpload?: () => void;
 }
 
 export function MovieToolbar({
@@ -20,6 +21,7 @@ export function MovieToolbar({
   categories,
   selectedCategory,
   onCategoryChange,
+  onUpload,
 }: Props) {
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -95,6 +97,20 @@ export function MovieToolbar({
             </button>
           </>
         )}
+
+        {/* Upload button */}
+        {onUpload && (
+          <button
+            onClick={onUpload}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium shrink-0 transition-colors',
+              'bg-indigo-600 text-white hover:bg-indigo-700',
+            )}
+          >
+            <Upload className="w-4 h-4" />
+            <span className="hidden sm:inline">Subir</span>
+          </button>
+        )}
       </div>
 
       {/* Category filters */}
@@ -107,10 +123,10 @@ export function MovieToolbar({
           />
           {categories.map((cat) => (
             <CategoryPill
-              key={cat}
-              label={cat}
-              active={selectedCategory === cat}
-              onClick={() => onCategoryChange(cat)}
+              key={cat.value}
+              label={cat.label}
+              active={selectedCategory === cat.value}
+              onClick={() => onCategoryChange(cat.value)}
             />
           ))}
         </div>

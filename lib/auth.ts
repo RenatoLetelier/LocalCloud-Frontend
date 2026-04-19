@@ -26,7 +26,7 @@ export function saveAuth(token: string, user: UserPublic): void {
 
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/${expires}; SameSite=Strict${secure}`;
-  sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  saveUser(user);
 }
 
 export function clearAuth(): void {
@@ -35,6 +35,10 @@ export function clearAuth(): void {
 }
 
 // ─── Cached user (avoids a network round-trip on every page load) ─────────────
+
+export function saveUser(user: UserPublic): void {
+  sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+}
 
 export function getSavedUser(): UserPublic | null {
   if (typeof window === 'undefined') return null;

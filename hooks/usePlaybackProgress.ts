@@ -1,94 +1,105 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import type { PlaybackEntry } from '@/lib/types';
 
-const STORAGE_KEY = 'lc_playback_progress';
 const SAVE_INTERVAL = 10_000; // Save every 10 seconds
 const MIN_PROGRESS = 5;       // Don't save if less than 5 seconds watched
 const COMPLETION_THRESHOLD = 0.95; // Consider finished if >95% watched
 
-export interface PlaybackEntry {
-  movieId: string;
-  currentTime: number;
-  duration: number;
-  updatedAt: string;
-}
-
-function loadAll(): Record<string, PlaybackEntry> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveAll(data: Record<string, PlaybackEntry>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
+export const playbackKeys = {
+  all: ['playback-progress'] as const,
+  list: () => [...playbackKeys.all, 'list'] as const,
+  detail: (movieId: string) => [...playbackKeys.all, 'detail', movieId] as const,
+};
 
 /**
  * Hook for reading all playback progress entries (for "Continue Watching" row).
  */
 export function useAllPlaybackProgress() {
-  const [entries, setEntries] = useState<PlaybackEntry[]>([]);
+  const { data: entries = [] } = useQuery<PlaybackEntry[]>({
+    queryKey: playbackKeys.list(),
+    queryFn: () => api.playback.list(),
+  });
 
-  useEffect(() => {
-    const all = loadAll();
-    // Sort by most recently watched, filter out completed
-    const sorted = Object.values(all)
-      .filter((e) => e.currentTime / e.duration < COMPLETION_THRESHOLD)
-      .filter((e) => e.currentTime >= MIN_PROGRESS)
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    setEntries(sorted);
-  }, []);
+  // Filter and sort: exclude completed, exclude barely-watched, sort by most recent
+  const filtered = entries
+    .filter((e) => e.currentTime / e.duration < COMPLETION_THRESHOLD)
+    .filter((e) => e.currentTime >= MIN_PROGRESS)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  return entries;
+  return filtered;
 }
 
 /**
  * Hook for saving/loading progress of a specific movie.
  */
 export function usePlaybackProgress(movieId: string) {
-  const [savedTime, setSavedTime] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+  const lastSaveTimeRef = useRef(0);
 
-  // Load saved progress on mount
-  useEffect(() => {
-    const all = loadAll();
-    const entry = all[movieId];
-    if (entry && entry.currentTime >= MIN_PROGRESS && entry.currentTime / entry.duration < COMPLETION_THRESHOLD) {
-      setSavedTime(entry.currentTime);
-    }
-  }, [movieId]);
+  const { data: entry } = useQuery<PlaybackEntry | null>({
+    queryKey: playbackKeys.detail(movieId),
+    queryFn: async () => {
+      try {
+        return await api.playback.get(movieId);
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!movieId,
+  });
 
-  // Save progress function
-  const saveProgress = useCallback((currentTime: number, duration: number) => {
-    if (duration <= 0 || currentTime < MIN_PROGRESS) return;
+  const savedTime =
+    entry && entry.currentTime >= MIN_PROGRESS && entry.currentTime / entry.duration < COMPLETION_THRESHOLD
+      ? entry.currentTime
+      : null;
 
-    const all = loadAll();
+  const saveMutation = useMutation({
+    mutationFn: async ({ currentTime, duration }: { currentTime: number; duration: number }) => {
+      if (currentTime / duration >= COMPLETION_THRESHOLD) {
+        await api.playback.delete(movieId);
+      } else {
+        await api.playback.save(movieId, currentTime, duration);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: playbackKeys.list() });
+      queryClient.invalidateQueries({ queryKey: playbackKeys.detail(movieId) });
+    },
+  });
 
-    // If completed, remove the entry
-    if (currentTime / duration >= COMPLETION_THRESHOLD) {
-      delete all[movieId];
-    } else {
-      all[movieId] = {
-        movieId,
-        currentTime,
-        duration,
-        updatedAt: new Date().toISOString(),
-      };
-    }
-    saveAll(all);
-  }, [movieId]);
+  const saveProgress = useCallback(
+    (currentTime: number, duration: number) => {
+      if (duration <= 0 || currentTime < MIN_PROGRESS) return;
+      saveMutation.mutate({ currentTime, duration });
+    },
+    [saveMutation],
+  );
 
-  // Clear progress
+  // Throttled save for use in onTimeUpdate (saves at most every SAVE_INTERVAL)
+  const saveProgressThrottled = useCallback(
+    (currentTime: number, duration: number) => {
+      const now = Date.now();
+      if (now - lastSaveTimeRef.current >= SAVE_INTERVAL) {
+        saveProgress(currentTime, duration);
+        lastSaveTimeRef.current = now;
+      }
+    },
+    [saveProgress],
+  );
+
   const clearProgress = useCallback(() => {
-    const all = loadAll();
-    delete all[movieId];
-    saveAll(all);
-    setSavedTime(null);
-  }, [movieId]);
+    api.playback.delete(movieId).then(() => {
+      queryClient.invalidateQueries({ queryKey: playbackKeys.list() });
+      queryClient.invalidateQueries({ queryKey: playbackKeys.detail(movieId) });
+    });
+  }, [movieId, queryClient]);
 
-  return { savedTime, saveProgress, clearProgress, SAVE_INTERVAL };
+  return { savedTime, saveProgress, saveProgressThrottled, clearProgress, SAVE_INTERVAL };
 }
+
+// Re-export type for consumers
+export type { PlaybackEntry };

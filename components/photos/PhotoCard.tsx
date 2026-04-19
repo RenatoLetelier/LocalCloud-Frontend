@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Heart, ImageIcon } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthImage } from '@/hooks/useAuthImage';
@@ -20,7 +20,7 @@ interface Props {
   onClick?: (file: FileRecord) => void;
 }
 
-export function PhotoCard({
+export const PhotoCard = memo(function PhotoCard({
   file,
   isFavorite = false,
   selected = false,
@@ -83,7 +83,7 @@ export function PhotoCard({
       onDragStart={handleDragStart}
       className={cn(
         // base
-        'group relative aspect-square rounded-xl overflow-hidden cursor-pointer text-left',
+        'group relative w-full aspect-square rounded-xl overflow-hidden cursor-pointer text-left',
         'bg-gray-100 dark:bg-gray-800',
         'transition-all duration-200 focus-visible:outline-none',
         // selection / hover ring
@@ -125,8 +125,8 @@ export function PhotoCard({
 
       {/* Placeholder when no thumb available */}
       {!src && !loading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-300 dark:text-gray-600">
-          <ImageIcon className="w-10 h-10" />
+        <div className="absolute inset-0 flex items-center justify-center text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700">
+          <ImageIcon className="w-8 h-8" />
         </div>
       )}
 
@@ -197,4 +197,4 @@ export function PhotoCard({
       )}
     </button>
   );
-}
+});

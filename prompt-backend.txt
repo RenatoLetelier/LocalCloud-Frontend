@@ -1,0 +1,68 @@
+PROMPT PARA BACKEND (API SERVER)
+
+El frontend de LocalCloud fue actualizado con nuevas funcionalidades. Necesito que implementes los siguientes endpoints y cambios en el backend para que todo funcione correctamente.
+
+=== 1. SUBIDA DE ARCHIVOS (Fotos y Videos ligeros) ===
+
+Endpoint: POST /api/files/upload/:userId
+- Recibe un FormData con un campo "file"
+- Acepta imágenes (jpg, png, webp, heic) y videos (mp4, mov, webm)
+- Fotos: max 50MB. Videos: max 500MB
+- Guarda el archivo en el storage del Raspberry Pi
+- Genera thumbnail para fotos e imagenes de preview para videos
+- Devuelve el FileRecord creado con todos sus campos
+
+=== 2. FAVORITOS ===
+
+Endpoints:
+- GET /api/favorites — devuelve lista de FileRecord[] que son favoritos del usuario autenticado
+- POST /api/favorites/:fileId — marca un archivo como favorito
+- DELETE /api/favorites/:fileId — quita un archivo de favoritos
+
+=== 3. PAPELERA ===
+
+Endpoints:
+- GET /api/files/trash — devuelve lista de FileRecord[] en papelera del usuario (con campo deletedAt)
+- POST /api/files/:id/trash — mueve archivo a papelera (soft delete, setea deletedAt)
+- POST /api/files/:id/restore — restaura archivo de papelera (limpia deletedAt)
+- DELETE /api/files/trash — vacia papelera (elimina permanentemente todos los archivos con deletedAt del usuario)
+
+Los archivos en papelera se eliminan automaticamente despues de 30 dias.
+
+=== 4. PROGRESO DE REPRODUCCION (Peliculas) ===
+
+Endpoints:
+- GET /api/playback — devuelve PlaybackEntry[] de todas las peliculas con progreso guardado del usuario
+- GET /api/playback/:movieId — devuelve PlaybackEntry de una pelicula especifica
+- PUT /api/playback/:movieId — guarda/actualiza progreso. Body: { currentTime: number, duration: number }
+- DELETE /api/playback/:movieId — elimina progreso de una pelicula
+
+PlaybackEntry tiene: id, movieId, userId, currentTime, duration, updatedAt
+
+=== 5. SUBIDA DE PELICULAS (Chunked Upload) ===
+
+El frontend sube peliculas grandes en chunks de 10MB con hasta 3 chunks concurrentes.
+
+Endpoints:
+- POST /api/library/upload/init — inicia upload. Body: { filename, title, category, totalChunks, totalSize }. Devuelve: { uploadId, chunkSize }
+- POST /api/library/upload/:uploadId/chunk/:index — recibe un chunk (FormData con campo "chunk"). Guarda temporalmente.
+- POST /api/library/upload/:uploadId/complete — marca upload como completo, ensambla los chunks en un archivo, y lanza job de procesamiento con ffmpeg. Devuelve: { jobId }
+
+=== 6. ESTADO DE JOBS ===
+
+Endpoint: GET /api/jobs/:jobId
+- Devuelve el estado del job de procesamiento
+- Campos: { id, status, progress (0-100), movieId (cuando termina), error (si falla), createdAt, updatedAt }
+- status puede ser: "queued" | "uploading" | "processing" | "transcoding" | "done" | "error"
+- El frontend hace polling cada 5 segundos a este endpoint
+
+=== 7. CATEGORIAS DE PELICULAS ===
+
+Las categorias disponibles son: accion, aventura, animacion, ciencia ficcion, comedia, crimen, documental, drama, fantasia, guerra, historia, misterio, musical, romance, suspenso, terror, western
+
+=== NOTAS ===
+
+- Todos los endpoints protegidos requieren JWT en header Authorization: Bearer <token>
+- El usuario se obtiene del token JWT
+- El backend debe comunicarse con el Raspberry Pi para almacenamiento y procesamiento de archivos
+- Los thumbnails y archivos procesados deben almacenarse en el Raspberry Pi

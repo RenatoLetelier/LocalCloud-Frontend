@@ -38,7 +38,7 @@ export function PhotoGrid({ view = 'library', albumId }: Props) {
   const [searchQuery, setSearchQuery]       = useState('');
 
   const debouncedSearch = useDebounce(searchQuery, 300);
-  const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
+  const { favoriteIds, toggle: toggleFavorite, isFavorite } = useFavorites();
 
   // ── Filter displayed files (exclude trashed) ───────────────────────────────
   const displayed = useMemo(() => {
@@ -52,7 +52,7 @@ export function PhotoGrid({ view = 'library', albumId }: Props) {
       switch (view) {
         case 'photos':    result = active.filter((f) => f.type === 'photo'); break;
         case 'videos':    result = active.filter((f) => f.type === 'video'); break;
-        case 'favorites': result = active.filter((f) => favorites.has(f.id)); break;
+        case 'favorites': result = active.filter((f) => favoriteIds.has(f.id)); break;
         case 'timeline':  result = [...active]; break;
         default:          result = active;
       }
@@ -65,7 +65,7 @@ export function PhotoGrid({ view = 'library', albumId }: Props) {
     }
 
     return result;
-  }, [files, view, albumId, favorites, debouncedSearch, trashedIds]);
+  }, [files, view, albumId, favoriteIds, debouncedSearch, trashedIds]);
 
   // ── Selection helpers ─────────────────────────────────────────────────────
   const selectionMode = selected.size > 0;

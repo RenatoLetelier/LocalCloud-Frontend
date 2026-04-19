@@ -1,0 +1,61 @@
+PROMPT PARA RASPBERRY PI (STORAGE + PROCESSING SERVER)
+
+El Raspberry Pi 5 actua como servidor de almacenamiento y procesamiento de media para LocalCloud. El backend API le envia archivos y le pide que los procese.
+
+=== 1. ALMACENAMIENTO DE FOTOS Y VIDEOS LIGEROS ===
+
+- Recibe archivos de fotos (jpg, png, webp, heic) y videos cortos (mp4, mov, webm)
+- Genera thumbnails para fotos (ej: 300px de ancho, jpg comprimido)
+- Genera thumbnails/previews para videos cortos (un frame extraido con ffmpeg)
+- Organiza archivos en carpetas por usuario y fecha
+- Sirve archivos via HTTP para que el frontend los muestre
+
+=== 2. PROCESAMIENTO DE PELICULAS (FFMPEG + HLS) ===
+
+Cuando el backend le envia una pelicula completa (archivo de video grande, hasta 8GB):
+
+1. Recibe el archivo de video ensamblado
+2. Transcodifica a HLS (HTTP Live Streaming) usando ffmpeg:
+   - Genera multiples calidades si es posible (480p, 720p, 1080p segun el original)
+   - Genera un master playlist .m3u8
+   - Segmentos .ts de ~6 segundos
+3. Genera un thumbnail/poster de la pelicula (un frame representativo)
+4. Reporta progreso del procesamiento (0-100%) para que el backend pueda informar al frontend via polling
+5. Cuando termina, notifica al backend con el movieId y las rutas de los archivos generados
+6. Limpia el archivo original si ya no se necesita (o lo conserva segun configuracion)
+
+=== 3. ESTRUCTURA DE ALMACENAMIENTO SUGERIDA ===
+
+/media/
+  photos/
+    {userId}/
+      originals/
+      thumbnails/
+  movies/
+    {movieId}/
+      original/
+      hls/
+        master.m3u8
+        480p/
+        720p/
+        1080p/
+      poster.jpg
+
+=== 4. SERVIR CONTENIDO ===
+
+- Servir archivos estaticos via HTTP (fotos, thumbnails, streams HLS)
+- Soportar HTTP Range requests para video progresivo (videos ligeros de la seccion de fotos)
+- Soportar CORS para que el frontend pueda acceder desde su dominio
+
+=== 5. LIMPIEZA ===
+
+- Eliminar archivos fisicos cuando el backend lo solicite (papelera vaciada, pelicula eliminada)
+- Limpiar chunks temporales despues de ensamblar
+- Opcionalmente: cron job para limpiar archivos huerfanos
+
+=== NOTAS ===
+
+- El Pi se comunica con el backend API (no directamente con el frontend)
+- ffmpeg debe estar instalado en el Pi
+- El procesamiento de peliculas es pesado, manejar una cola de jobs (uno a la vez para no saturar el Pi)
+- Reportar progreso parseando la salida de ffmpeg (duration/time)
