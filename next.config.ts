@@ -10,18 +10,9 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true, // Type errors won't block the Cloudflare deploy
   },
-  // Proxy /api/* to the backend in development to avoid CORS issues.
-  // On Cloudflare Pages rewrites are NOT supported, so production uses
-  // NEXT_PUBLIC_API_URL (absolute URLs) instead.
-  async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${backendUrl}/api/:path*`,
-      },
-    ];
-  },
+  // NOTE: rewrites() are NOT supported on Cloudflare Pages with next-on-pages.
+  // All API calls use NEXT_PUBLIC_API_URL as base (absolute URLs).
+  // Configure CORS on the backend to allow the frontend origin.
 };
 
 export default nextConfig;
