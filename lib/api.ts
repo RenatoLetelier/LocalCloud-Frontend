@@ -1,5 +1,5 @@
 import { clearAuth, getToken } from './auth';
-import type { Album, AuthResponse, BrowseResponse, FileRecord, LibraryMovie, UserPublic } from './types';
+import type { Album, AuthResponse, BrowseResponse, ChunkedUploadInit, FileRecord, LibraryMovie, PlaybackEntry, Subtitle, UploadJob, UserPublic } from './types';
 
 // ─── Generic fetcher ─────────────────────────────────────────────────────────
 // BASE is the backend origin (e.g. https://your-project.vercel.app).
@@ -69,8 +69,11 @@ export const api = {
     list: (userId?: string) =>
       request<FileRecord[]>(`/api/files${userId ? `?userId=${userId}` : ''}`),
     get: (id: string) => request<FileRecord>(`/api/files/${id}`),
+    upload: (userId: string, formData: FormData) =>
+      request<FileRecord>(`/api/files/upload/${userId}`, { method: 'POST', body: formData }),
+    /** @deprecated Use upload() instead */
     uploadPhoto: (userId: string, formData: FormData) =>
-      request<FileRecord>(`/api/files/upload/photo/${userId}`, { method: 'POST', body: formData }),
+      request<FileRecord>(`/api/files/upload/${userId}`, { method: 'POST', body: formData }),
     delete: (id: string) =>
       request<{ deleted: string }>(`/api/files/${id}`, { method: 'DELETE' }),
     updateLocation: (id: string, latitude: number, longitude: number) =>
@@ -80,6 +83,24 @@ export const api = {
       }),
     removeLocation: (id: string) =>
       request<FileRecord>(`/api/files/${id}/location`, { method: 'DELETE' }),
+    favorite: (id: string) =>
+      request<{ fileId: string }>(`/api/favorites/${id}`, { method: 'POST' }),
+    unfavorite: (id: string) =>
+      request<void>(`/api/favorites/${id}`, { method: 'DELETE' }),
+    trash: (id: string) =>
+      request<FileRecord>(`/api/files/${id}/trash`, { method: 'POST' }),
+    restore: (id: string) =>
+      request<FileRecord>(`/api/files/${id}/trash`, { method: 'DELETE' }),
+    emptyTrash: () =>
+      request<{ deleted: number }>('/api/files/trash', { method: 'DELETE' }),
+  },
+
+  favorites: {
+    list: () => request<FileRecord[]>('/api/favorites'),
+  },
+
+  trash: {
+    list: () => request<FileRecord[]>('/api/files/trash'),
   },
 
   albums: {
@@ -104,6 +125,47 @@ export const api = {
       request<{ deleted: string }>(`/api/library/movies/${id}`, { method: 'DELETE' }),
     browse: (path?: string) =>
       request<BrowseResponse>(`/api/library/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+    // Chunked movie upload
+    initUpload: (data: { filename: string; title: string; category: string; totalChunks: number; totalSize: number }) =>
+      request<ChunkedUploadInit>('/api/library/upload/init', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    uploadChunk: (uploadId: string, index: number, chunk: Blob) => {
+      const fd = new FormData();
+      fd.append('chunk', chunk);
+      return request<{ received: number }>(`/api/library/upload/${uploadId}/chunk/${index}`, {
+        method: 'POST',
+        body: fd,
+      });
+    },
+    completeUpload: (uploadId: string) =>
+      request<{ jobId: string; movieId?: string | null }>(`/api/library/upload/${uploadId}/complete`, { method: 'POST' }),
+  },
+
+  jobs: {
+    getStatus: (jobId: string) => request<UploadJob>(`/api/jobs/${jobId}`),
+  },
+
+  subtitles: {
+    list: (movieId: string) =>
+      request<Subtitle[]>(`/api/library/movies/${movieId}/subtitles`),
+    upload: (movieId: string, formData: FormData) =>
+      request<Subtitle>(`/api/library/movies/${movieId}/subtitles`, { method: 'POST', body: formData }),
+    delete: (subId: string) =>
+      request<void>(`/api/library/subtitles/${subId}`, { method: 'DELETE' }),
+  },
+
+  playback: {
+    list: () => request<PlaybackEntry[]>('/api/playback-progress'),
+    get: (movieId: string) => request<PlaybackEntry>(`/api/playback-progress/${movieId}`),
+    save: (movieId: string, currentTime: number, duration: number) =>
+      request<PlaybackEntry>(`/api/playback-progress/${movieId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ currentTime, duration }),
+      }),
+    delete: (movieId: string) =>
+      request<void>(`/api/playback-progress/${movieId}`, { method: 'DELETE' }),
   },
 
   users: {

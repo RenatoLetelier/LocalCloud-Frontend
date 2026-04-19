@@ -2,7 +2,8 @@
 
 import { Play } from 'lucide-react';
 import Link from 'next/link';
-import { useAllPlaybackProgress, type PlaybackEntry } from '@/hooks/usePlaybackProgress';
+import { useAllPlaybackProgress } from '@/hooks/usePlaybackProgress';
+import type { PlaybackEntry } from '@/lib/types';
 import { useMovies } from '@/hooks/queries/useMovies';
 import { api } from '@/lib/api';
 import { useAuthImage } from '@/hooks/useAuthImage';

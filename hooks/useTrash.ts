@@ -1,38 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { fileKeys } from '@/hooks/queries/useFiles';
+import { showError } from '@/lib/toast';
+import type { FileRecord } from '@/lib/types';
 
-/**
- * Client-side trash system using localStorage.
- *
- * When a file is "deleted", it's moved to trash (stored in localStorage).
- * The actual API delete is NOT called — the file stays on the server.
- * After 30 days, items are auto-purged (permanently deleted via API).
- *
- * Shape stored: { [fileId]: deletedAt (ISO string) }
- */
-
-const STORAGE_KEY = 'lc_trash';
 const TRASH_DAYS = 30;
+
+export const trashKeys = {
+  all: ['trash'] as const,
+  list: () => [...trashKeys.all, 'list'] as const,
+};
 
 export interface TrashedItem {
   id: string;
   deletedAt: string;
   daysRemaining: number;
-}
-
-function loadTrash(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveTrash(data: Record<string, string>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 function getDaysRemaining(deletedAt: string): number {
@@ -42,74 +27,112 @@ function getDaysRemaining(deletedAt: string): number {
 }
 
 export function useTrash() {
-  const [trashMap, setTrashMap] = useState<Record<string, string>>({});
+  const queryClient = useQueryClient();
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    setTrashMap(loadTrash());
-  }, []);
+  const { data: trashedFiles = [] } = useQuery<FileRecord[]>({
+    queryKey: trashKeys.list(),
+    queryFn: () => api.trash.list(),
+  });
 
-  /** Move file IDs to trash */
-  const trashFiles = useCallback((ids: string[]) => {
-    setTrashMap((prev) => {
-      const next = { ...prev };
-      const now = new Date().toISOString();
-      for (const id of ids) {
-        next[id] = now;
+  const trashedIds = useMemo(() => new Set(trashedFiles.map((f) => f.id)), [trashedFiles]);
+
+  const trashedItems: TrashedItem[] = useMemo(
+    () =>
+      trashedFiles.map((f) => ({
+        id: f.id,
+        deletedAt: f.deletedAt!,
+        daysRemaining: getDaysRemaining(f.deletedAt!),
+      })),
+    [trashedFiles],
+  );
+
+  const trashCount = trashedFiles.length;
+
+  const expiredIds = useMemo(
+    () => trashedItems.filter((item) => item.daysRemaining <= 0).map((item) => item.id),
+    [trashedItems],
+  );
+
+  // Move files to trash
+  const trashMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.files.trash(id)));
+    },
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: trashKeys.list() });
+      await queryClient.cancelQueries({ queryKey: fileKeys.all });
+      const previousTrash = queryClient.getQueryData<FileRecord[]>(trashKeys.list());
+      const previousFiles = queryClient.getQueryData<FileRecord[]>(fileKeys.list());
+
+      // Optimistic: add to trash list, mark in files list
+      if (previousFiles) {
+        const now = new Date().toISOString();
+        const movedFiles = previousFiles.filter((f) => ids.includes(f.id)).map((f) => ({ ...f, deletedAt: now }));
+        queryClient.setQueryData<FileRecord[]>(trashKeys.list(), (old = []) => [...old, ...movedFiles]);
       }
-      saveTrash(next);
-      return next;
-    });
-  }, []);
 
-  /** Restore file IDs from trash */
-  const restoreFiles = useCallback((ids: string[]) => {
-    setTrashMap((prev) => {
-      const next = { ...prev };
-      for (const id of ids) {
-        delete next[id];
-      }
-      saveTrash(next);
-      return next;
-    });
-  }, []);
+      return { previousTrash, previousFiles };
+    },
+    onError: (_err, _ids, context) => {
+      if (context?.previousTrash) queryClient.setQueryData(trashKeys.list(), context.previousTrash);
+      if (context?.previousFiles) queryClient.setQueryData(fileKeys.list(), context.previousFiles);
+      showError('Error al mover a la papelera');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: trashKeys.list() });
+      queryClient.invalidateQueries({ queryKey: fileKeys.all });
+    },
+  });
 
-  /** Remove a file ID from trash tracking (after permanent delete) */
-  const removeFromTrash = useCallback((ids: string[]) => {
-    setTrashMap((prev) => {
-      const next = { ...prev };
-      for (const id of ids) {
-        delete next[id];
-      }
-      saveTrash(next);
-      return next;
-    });
-  }, []);
+  // Restore files from trash
+  const restoreMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.files.restore(id)));
+    },
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: trashKeys.list() });
+      const previous = queryClient.getQueryData<FileRecord[]>(trashKeys.list());
+      queryClient.setQueryData<FileRecord[]>(trashKeys.list(), (old = []) =>
+        old.filter((f) => !ids.includes(f.id)),
+      );
+      return { previous };
+    },
+    onError: (_err, _ids, context) => {
+      if (context?.previous) queryClient.setQueryData(trashKeys.list(), context.previous);
+      showError('Error al restaurar archivos');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: trashKeys.list() });
+      queryClient.invalidateQueries({ queryKey: fileKeys.all });
+    },
+  });
 
-  /** Check if a file ID is in trash */
-  const isTrashed = useCallback((id: string): boolean => {
-    return id in trashMap;
-  }, [trashMap]);
+  // Empty trash (permanent delete all)
+  const emptyTrashMutation = useMutation({
+    mutationFn: () => api.files.emptyTrash(),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: trashKeys.list() });
+      const previous = queryClient.getQueryData<FileRecord[]>(trashKeys.list());
+      queryClient.setQueryData<FileRecord[]>(trashKeys.list(), []);
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(trashKeys.list(), context.previous);
+      showError('Error al vaciar la papelera');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: trashKeys.list() });
+      queryClient.invalidateQueries({ queryKey: fileKeys.all });
+    },
+  });
 
-  /** Get all trashed item IDs */
-  const trashedIds = new Set(Object.keys(trashMap));
+  const trashFiles = useCallback((ids: string[]) => trashMutation.mutate(ids), [trashMutation]);
+  const restoreFiles = useCallback((ids: string[]) => restoreMutation.mutate(ids), [restoreMutation]);
 
-  /** Get trashed items with metadata */
-  const trashedItems: TrashedItem[] = Object.entries(trashMap).map(([id, deletedAt]) => ({
-    id,
-    deletedAt,
-    daysRemaining: getDaysRemaining(deletedAt),
-  }));
-
-  /** Get IDs of items expired (0 days remaining) — ready for permanent delete */
-  const expiredIds = trashedItems
-    .filter((item) => item.daysRemaining <= 0)
-    .map((item) => item.id);
-
-  const trashCount = trashedIds.size;
+  const isTrashed = useCallback((id: string): boolean => trashedIds.has(id), [trashedIds]);
 
   return {
-    trashMap,
+    trashedFiles,
     trashedIds,
     trashedItems,
     trashCount,
@@ -117,6 +140,6 @@ export function useTrash() {
     isTrashed,
     trashFiles,
     restoreFiles,
-    removeFromTrash,
+    emptyTrashMutation,
   };
 }

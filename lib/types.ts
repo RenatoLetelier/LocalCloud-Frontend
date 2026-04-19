@@ -30,6 +30,8 @@ export interface FileRecord {
   hlsManifestPath?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  isFavorite?: boolean;
+  deletedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -57,6 +59,35 @@ export interface LibraryMovie {
   updatedAt?: string;
 }
 
+export interface PlaybackEntry {
+  id: string;
+  movieId: string;
+  userId: string;
+  currentTime: number;
+  duration: number;
+  updatedAt: string;
+}
+
+// ─── Upload types ───────────────────────────────────────────────────────────
+
+export type UploadJobStatus = 'queued' | 'uploading' | 'processing' | 'transcoding' | 'done' | 'error';
+
+export interface UploadJob {
+  id: string;
+  status: UploadJobStatus;
+  progress: number;       // 0-100
+  movieId?: string | null; // available when status === 'done'
+  error?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ChunkedUploadInit {
+  uploadId: string;
+  chunkSize: number;
+  jobId?: string; // backend may return a jobId early at init time
+}
+
 export interface DirectoryEntry {
   name: string;
   path: string;
@@ -69,4 +100,13 @@ export interface DirectoryEntry {
 export interface BrowseResponse {
   path: string;
   entries: DirectoryEntry[];
+}
+
+export interface Subtitle {
+  id: string;
+  movieId: string;
+  lang: string;   // 'es', 'en', 'pt-br'
+  label: string;  // 'Español', 'English'
+  piPath: string;
+  createdAt: string;
 }

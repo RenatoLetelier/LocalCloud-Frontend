@@ -69,8 +69,8 @@ export function Navbar() {
 
       {/* ── Right: user info + controls ── */}
       <div className="flex items-center gap-3">
-        {/* Username */}
-        {user && (
+        {/* Username — only after mount to avoid hydration mismatch (user comes from sessionStorage) */}
+        {mounted && user && (
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
             <User className="w-4 h-4 shrink-0" />
             <span className="hidden sm:block truncate max-w-[140px]">{user.name}</span>

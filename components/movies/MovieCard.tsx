@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Film, Play } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthImage } from '@/hooks/useAuthImage';
@@ -11,7 +12,7 @@ interface Props {
   onClick?: (movie: LibraryMovie) => void;
 }
 
-export function MovieCard({ movie, onClick }: Props) {
+export const MovieCard = memo(function MovieCard({ movie, onClick }: Props) {
   const thumbUrl = movie.thumbPath ? api.libraryMedia.thumbUrl(movie.thumbPath) : null;
   const { src, loading } = useAuthImage(thumbUrl);
 
@@ -72,4 +73,4 @@ export function MovieCard({ movie, onClick }: Props) {
       </div>
     </button>
   );
-}
+});
