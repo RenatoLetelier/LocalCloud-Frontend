@@ -140,10 +140,10 @@ export function PhotosSidebar({ isOpen, onClose }: Props) {
             <div className="flex justify-center py-4">
               <LoadingSpinner size="sm" />
             </div>
-          ) : albums.length === 0 ? (
+          ) : albums.filter((a) => a.userId === user?.id).length === 0 ? (
             <p className="px-3 text-xs text-gray-400 dark:text-gray-600 py-2">No albums yet</p>
           ) : (
-            albums.map((album) =>
+            albums.filter((a) => a.userId === user?.id).map((album) =>
               confirmDeleteId === album.id ? (
                 <div
                   key={album.id}

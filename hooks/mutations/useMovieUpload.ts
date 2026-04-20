@@ -10,6 +10,7 @@ import {
   CHUNK_RETRY_ATTEMPTS,
   CHUNK_RETRY_BASE_DELAY,
   JOB_POLL_INTERVAL,
+  JOB_POLL_TIMEOUT,
 } from '@/lib/constants';
 import type { UploadJob, UploadJobStatus } from '@/lib/types';
 
@@ -212,9 +213,21 @@ export function useMovieUpload() {
 
       // ── Phase 3: Poll for processing status ─────────────────────────
       pollingRef.current = true;
+      const pollStart = Date.now();
 
       while (pollingRef.current) {
         if (controller.signal.aborted) return;
+
+        // Timeout: if processing takes too long, stop polling and show error
+        if (Date.now() - pollStart > JOB_POLL_TIMEOUT) {
+          pollingRef.current = false;
+          setState((s) => ({
+            ...s,
+            phase: 'error',
+            error: 'El procesamiento tardó demasiado. Verifica que el worker del Raspberry Pi esté corriendo.',
+          }));
+          return;
+        }
 
         await new Promise((r) => setTimeout(r, JOB_POLL_INTERVAL));
 

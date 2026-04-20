@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Heart, ImageIcon } from 'lucide-react';
+import { AlertTriangle, Heart, ImageIcon, Play } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthImage } from '@/hooks/useAuthImage';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -125,8 +125,17 @@ export const PhotoCard = memo(function PhotoCard({
 
       {/* Placeholder when no thumb available */}
       {!src && !loading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700">
-          <ImageIcon className="w-8 h-8" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700">
+          {file.type === 'video' ? (
+            <>
+              <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                <Play className="w-5 h-5 ml-0.5" />
+              </div>
+              <span className="text-[10px] font-medium uppercase tracking-wide">Video</span>
+            </>
+          ) : (
+            <ImageIcon className="w-8 h-8" />
+          )}
         </div>
       )}
 

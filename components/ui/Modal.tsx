@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,9 @@ interface ModalProps {
 
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
   const scrollYRef = useRef(0);
+  // createPortal requires the DOM — guard against SSR
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // Close on Escape key
   useEffect(() => {
@@ -36,10 +40,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     modalLockCount++;
 
     if (isFirst) {
-      // Save current scroll position
       scrollYRef.current = window.scrollY;
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
       document.body.style.position = 'fixed';
       document.body.style.top = `-${scrollYRef.current}px`;
       document.body.style.left = '0';
@@ -50,7 +52,6 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     return () => {
       modalLockCount--;
       if (modalLockCount === 0) {
-        // Restore scroll position
         document.body.style.position = '';
         document.body.style.top = '';
         document.body.style.left = '';
@@ -61,10 +62,10 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -93,6 +94,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

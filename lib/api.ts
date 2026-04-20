@@ -123,6 +123,8 @@ export const api = {
     getMovie: (id: string) => request<LibraryMovie>(`/api/library/movies/${id}`),
     deleteMovie: (id: string) =>
       request<{ deleted: string }>(`/api/library/movies/${id}`, { method: 'DELETE' }),
+    uploadPoster: (id: string, formData: FormData) =>
+      request<LibraryMovie>(`/api/library/movies/${id}/poster`, { method: 'POST', body: formData }),
     browse: (path?: string) =>
       request<BrowseResponse>(`/api/library/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`),
     // Chunked movie upload
@@ -171,6 +173,8 @@ export const api = {
   users: {
     list: () => request<UserPublic[]>('/api/users'),
     get: (id: string) => request<UserPublic>(`/api/users/${id}`),
+    create: (data: { name: string; email: string; password: string; role: string }) =>
+      request<UserPublic>('/api/users', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { name?: string; email?: string; password?: string; role?: string }) =>
       request<UserPublic>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) =>

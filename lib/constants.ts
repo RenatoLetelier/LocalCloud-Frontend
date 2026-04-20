@@ -9,6 +9,7 @@ export const CHUNK_INTER_DELAY = 300;                    // ms pause between chu
 export const CHUNK_RETRY_ATTEMPTS = 4;                   // retries on 429 / network error
 export const CHUNK_RETRY_BASE_DELAY = 5000;              // 5s → 10s → 20s → 40s (exponential backoff)
 export const JOB_POLL_INTERVAL = 2000;                   // 2 seconds (backend recommendation)
+export const JOB_POLL_TIMEOUT = 30 * 60 * 1000;         // 30 minutes max processing wait
 
 export const ALLOWED_IMAGE_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/heic',

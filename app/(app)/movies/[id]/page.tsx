@@ -3,11 +3,12 @@
 export const runtime = 'edge';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Film, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { useMovie } from '@/hooks/queries/useMovies';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Film, Loader2, Trash2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMovie, movieKeys } from '@/hooks/queries/useMovies';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { useAuth } from '@/providers/AuthProvider';
 import dynamic from 'next/dynamic';
 
 const VideoPlayer = dynamic(
@@ -17,14 +18,20 @@ const VideoPlayer = dynamic(
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
+import { showError, showSuccess } from '@/lib/toast';
 
 export default function MovieDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const movieId = params.id;
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: movie, isLoading, error, refetch } = useMovie(movieId);
   const { savedTime, saveProgress, saveProgressThrottled } = usePlaybackProgress(movieId);
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Fetch subtitles for this movie
   const { data: subtitleData = [] } = useQuery({
@@ -60,7 +67,6 @@ export default function MovieDetailPage() {
     [saveProgressThrottled],
   );
 
-  // Save progress on unmount
   useEffect(() => {
     return () => {
       if (latestTimeRef.current) {
@@ -75,6 +81,20 @@ export default function MovieDetailPage() {
       saveProgress(latestTimeRef.current.duration, latestTimeRef.current.duration);
     }
   }, [saveProgress]);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await api.library.deleteMovie(movieId);
+      queryClient.invalidateQueries({ queryKey: movieKeys.all });
+      showSuccess('Película eliminada');
+      router.replace('/movies');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Error al eliminar');
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -122,18 +142,53 @@ export default function MovieDetailPage() {
         onEnded={handleEnded}
       />
 
-      {/* Movie info */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
-          {movie.title}
-        </h1>
-        {movie.category && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">{movie.category}</p>
-        )}
-        {movie.sizeBytes && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            {(movie.sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB
-          </p>
+      {/* Movie info + admin actions */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
+            {movie.title}
+          </h1>
+          {movie.category && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">{movie.category}</p>
+          )}
+          {movie.sizeBytes && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {(movie.sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB
+            </p>
+          )}
+        </div>
+
+        {/* Admin-only delete */}
+        {user?.role === 'admin' && (
+          <div className="shrink-0">
+            {confirmDelete ? (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50">
+                <span className="text-sm text-red-600 dark:text-red-400">¿Eliminar película?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-3 py-1 text-xs font-semibold rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="px-3 py-1 text-xs rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-800/50 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

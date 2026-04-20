@@ -28,7 +28,7 @@ export function ContinueWatchingRow() {
 
   return (
     <div className="px-6 pt-6">
-      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+      <h2 className="text-base font-semibold text-gray-100 mb-3 tracking-wide">
         Continuar viendo
       </h2>
       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
