@@ -41,6 +41,8 @@ export function MapView() {
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const thumbCacheRef = useRef<Map<string, string>>(new Map());
   const mapReadyRef = useRef(false);
+  // Only fit bounds on the very first load — never after user drags/edits
+  const hasInitialFitRef = useRef(false);
 
   const [placingFile, setPlacingFile] = useState<FileRecord | null>(null);
   const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
@@ -98,10 +100,15 @@ export function MapView() {
         continue;
       }
 
-      // Create marker with default icon first
-      const marker = L.marker([lat, lng]).addTo(map);
+      // Create draggable marker — user can drag to refine position
+      const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
       marker.bindPopup(`<b>${file.name}</b><br/>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
       marker.on('click', () => setSelectedFile(file));
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        marker.bindPopup(`<b>${file.name}</b><br/>${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`);
+        updateLocation.mutate({ fileId: file.id, latitude: pos.lat, longitude: pos.lng });
+      });
       markersRef.current.set(file.id, marker);
 
       // Load real thumbnail async and update the marker icon
@@ -128,11 +135,14 @@ export function MapView() {
       }
     }
 
-    // Fit bounds on first load (when we have markers and map was just initialized)
-    if (bounds.length === 1) {
-      map.setView(bounds[0], 13);
-    } else if (bounds.length > 1) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+    // Fit bounds only on the very first load — never re-fit after edits/drags
+    if (!hasInitialFitRef.current && bounds.length > 0) {
+      if (bounds.length === 1) {
+        map.setView(bounds[0], 13);
+      } else {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+      }
+      hasInitialFitRef.current = true;
     }
   }, [filesWithLocations]);
 

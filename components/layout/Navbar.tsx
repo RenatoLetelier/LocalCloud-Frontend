@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
-import { ChevronRight, Cloud, LogOut, Moon, Sun, User } from 'lucide-react';
+import { ChevronRight, Cloud, LogOut, Moon, Settings, Sun, User } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { clearAuth } from '@/lib/auth';
 
 const PROJECT_LABELS: Record<string, string> = {
   '/photos': 'Photos',
   '/movies': 'Movies',
+  '/admin': 'Administrar',
 };
 
 function getProjectName(pathname: string): string | null {
@@ -69,6 +70,22 @@ export function Navbar() {
 
       {/* ── Right: user info + controls ── */}
       <div className="flex items-center gap-3">
+        {/* Admin link — only after mount to avoid hydration mismatch */}
+        {mounted && user?.role === 'admin' && (
+          <Link
+            href="/admin"
+            className={`
+              flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+              ${pathname.startsWith('/admin')
+                ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'}
+            `}
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:block">Administrar</span>
+          </Link>
+        )}
+
         {/* Username — only after mount to avoid hydration mismatch (user comes from sessionStorage) */}
         {mounted && user && (
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">

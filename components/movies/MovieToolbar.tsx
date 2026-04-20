@@ -31,10 +31,10 @@ export function MovieToolbar({
   }
 
   return (
-    <div className="flex flex-col gap-3 px-6 pt-6 pb-2">
+    <div className="flex flex-col gap-3 px-6 pt-5 pb-2">
       <div className="flex items-center gap-2">
         {/* Count */}
-        <span className="text-sm text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
+        <span className="text-sm text-gray-400 tabular-nums shrink-0">
           {count} {count === 1 ? 'película' : 'películas'}
         </span>
 
@@ -53,10 +53,8 @@ export function MovieToolbar({
                 autoFocus
                 className={cn(
                   'w-full pl-8 pr-3 py-1.5 text-sm rounded-lg',
-                  'bg-white dark:bg-gray-800',
-                  'border border-gray-300 dark:border-gray-600',
-                  'text-gray-900 dark:text-gray-100',
-                  'placeholder-gray-400',
+                  'bg-gray-800 border border-gray-700',
+                  'text-gray-100 placeholder-gray-500',
                   'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent',
                 )}
               />
@@ -72,7 +70,7 @@ export function MovieToolbar({
           <>
             {/* Desktop search */}
             <div className="relative hidden sm:block">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
               <input
                 type="text"
                 value={searchQuery}
@@ -80,10 +78,8 @@ export function MovieToolbar({
                 placeholder="Buscar..."
                 className={cn(
                   'w-44 lg:w-56 pl-8 pr-3 py-1.5 text-sm rounded-lg',
-                  'bg-white dark:bg-gray-800',
-                  'border border-gray-300 dark:border-gray-600',
-                  'text-gray-900 dark:text-gray-100',
-                  'placeholder-gray-400',
+                  'bg-gray-800 border border-gray-700',
+                  'text-gray-100 placeholder-gray-500',
                   'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent',
                 )}
               />
@@ -151,7 +147,7 @@ function CategoryPill({
         'shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize',
         active
           ? 'bg-indigo-600 text-white'
-          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700',
+          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200',
       )}
     >
       {label}
